@@ -148,10 +148,10 @@ class MSCRetinaDataset(MSCLearningDataSet):#Dataset):
 
     def get_retina_array(self, partial=False, use_local_setup=True, msc=True
                          , stare_only=False, drive_training_only=False, drive_test_only=False
-                         ,persistence_values=[]):
+                         ,persistence_values=[], env='multivax'):
 
         if use_local_setup:
-            self.LocalSetup = LocalSetup()
+            self.LocalSetup = LocalSetup(env)
 
             drive_training_path = self.LocalSetup.drive_training_path
             drive_segmentation_path = self.LocalSetup.drive_training_segmentation_path

@@ -16,31 +16,9 @@ from topoml.graphsage.utils import random_walk_embedding
 # sys.path.append(os.getcwd())
 
 
-paths_for_multivax = """ training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/drive/DRIVE/training/images"
-#training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/final_project/results/neuron_msc"
-testing_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/drive/DRIVE/test/images"
-train_write_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/drive/DRIVE/training/" # "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/final_project/results/" #
-test_write_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/drive/DRIVE/test/"
-stare_training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/stare/images"
-stare_train_write_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/stare/"
-"""
-# Paths for Multivax
-project_base_path = "/home/sam/Documents/PhD/Research/GeoMSCxML/"
-training_data_path = os.path.join(project_base_path, "datasets", "optics", "drive", "DRIVE", "training", "images")
-training_seg_data_path = os.path.join(project_base_path, "datasets", "optics", "drive", "DRIVE", "training",
-                                      "1st_manual")
-# training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/final_project/results/neuron_msc"
-testing_data_path = os.path.join(project_base_path, "datasets", "optics", "drive", "DRIVE", "test", "images")
-train_write_path = os.path.join(project_base_path, "datasets", "optics", "drive", "DRIVE", "training")
-# "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/final_project/results/" #
-test_write_path = os.path.join(project_base_path, "datasets", "optics", "drive", "DRIVE", "test")
-stare_training_data_path = os.path.join(project_base_path, "datasets", "optics", "stare", "images")
-stare_train_write_path = os.path.join(project_base_path, "datasets", "optics", "stare")
-
 ##
 ##
 ##
-## %%%%%%%%%%%%%%%%%%%              Segmentation and dataset collection                  %%%%%%%%%%%%%%
 ##
 ##
 
@@ -72,7 +50,8 @@ if collect_datasets:
     print(" %%% collecting data buffers")
     MSCRetinaDataSet = MSCRetinaDataset(with_hand_seg=True)
     # get each set independently for msc computation
-    drive_training_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_training_only=True)
+    drive_training_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False
+                                                                    , drive_training_only=True, env='sci')
     ##drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True)
     ##stare_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, stare_only=True)
 
