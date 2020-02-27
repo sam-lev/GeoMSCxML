@@ -12,7 +12,7 @@ class LocalSetup:
         def __init__(self, env='multivax'):
             # Paths for Multivax
             multivax = 'multivax' == env
-            slurm = not multivax
+            slurm = 'slurm' == env or 'sci' == env
             self.paths_for_multivax = """ training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/drive/DRIVE/training/images"
                         #training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/final_project/results/neuron_msc"
                         testing_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/drive/DRIVE/test/images"
