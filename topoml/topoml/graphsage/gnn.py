@@ -181,6 +181,7 @@ class unsupervised:
         self.flags.DEFINE_integer('validate_iter', 5000, "how often to run a validation minibatch.")
         self.flags.DEFINE_integer('validate_batch_size', 4, "how many nodes per validation sample.")
         self.flags.DEFINE_integer('gpu', gpu, "which gpu to use.")
+        self.flags.DEFINE_string('env', 'multivax', 'environment to manage data paths and gpu use')
         self.flags.DEFINE_integer('print_every', 25, "How often to print training info.")
         self.flags.DEFINE_integer('max_total_steps', 1000000000, "Maximum total number of iterations")
 
