@@ -72,7 +72,7 @@ class unsupervised:
               , positive_arcs = [], negative_arcs = []
               , weight_decay = 0.001, polarity = 6, generate_embedding=False):
         slurm = self.slurm
-        if slurm == False:
+        if slurm != 'slurm':
             os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 
         # Set random seed
@@ -183,10 +183,10 @@ class unsupervised:
         self.flags.DEFINE_integer('print_every', 25, "How often to print training info.")
         self.flags.DEFINE_integer('max_total_steps', 1000000000, "Maximum total number of iterations")
 
-        if slurm == False:
+        if slurm != 'slurm':
             os.environ["CUDA_VISIBLE_DEVICES"]=str(self.FLAGS.gpu)
 
-            #self.GPU_MEM_FRACTION = 0.8
+        self.GPU_MEM_FRACTION = 0.9
 
         #begin training
         print('Begin GNN training')
@@ -400,7 +400,7 @@ class unsupervised:
 
         config = tf.ConfigProto(log_device_placement=self.FLAGS.log_device_placement)
         config.gpu_options.allow_growth = True
-        #config.gpu_options.per_process_gpu_memory_fraction = GPU_MEM_FRACTION
+        config.gpu_options.per_process_gpu_memory_fraction = self.GPU_MEM_FRACTION
         config.allow_soft_placement = True
 
         # Initialize session
