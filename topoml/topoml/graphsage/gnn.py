@@ -303,7 +303,6 @@ class unsupervised:
                                          depth = self.depth,
                                          model_size=self.FLAGS.model_size,
                                          identity_dim = self.FLAGS.identity_dim,
-    
                                          logging=True)
             """callbacks=[
                 ModelSaver(), # Record state graph at intervals during epochs
