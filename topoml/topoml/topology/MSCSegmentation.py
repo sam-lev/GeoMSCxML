@@ -8,12 +8,11 @@ from topoml.topology.mscnn_segmentation import mscnn_segmentation
 from topoml.ui.ArcSelector import ArcSelector
 from topoml.ml.MSCSample import MSCSample
 #class with local file paths
-from topoml.ui.LocalSetup import LocalSetup
 
 sys.path.append(os.getcwd())
 
 
-LocalSetup = LocalSetup()
+LocalSetup = LS()
 paths_for_multivax = LocalSetup.paths_for_multivax
 # Paths for Multivax
 project_base_path = LocalSetup.project_base_path
@@ -114,7 +113,8 @@ class MSCSegmentation:
                               , data_buffer = None, data_path = None, segmentation_path=None,
                               write_path = None, labeled_segmentation=None, label=True
                               , save=False, save_binary_seg=False
-                              , valley=True, ridge=True):
+                              , valley=True, ridge=True, env='multivax'):
+        LocalSetup = LS(env=env)
         # check needed folders present else make
         if not os.path.exists(os.path.join(write_path, 'raw_images')):
             os.mkdir(os.path.join(write_path, 'raw_images'))
