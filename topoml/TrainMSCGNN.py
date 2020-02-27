@@ -4,6 +4,7 @@ import os
 import numpy as np
 from skimage import io
 import imageio
+import argparse
 from topoml.MSCGNN import MSCGNN
 from topoml.topology.mscnn_segmentation import mscnn_segmentation
 from topoml.topology.MSCSegmentation import MSCSegmentation
@@ -16,11 +17,11 @@ from topoml.graphsage.utils import random_walk_embedding
 # sys.path.append(os.getcwd())
 
 
-##
-##
-##
-##
-##
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--gpu',default=None, type=str, help="coma separated list of gpus to use")
+parser.add_argument('--env', default='multivax',  type=str, help="system to run, if multivax hard assign gpu, sci assumes slurm")
+args = parser.parse_args()
 
 
 # declarations for running examples
@@ -40,7 +41,7 @@ blur_sigmas = [1.0]  # 1.0, 2.0, 5.0, 10] # add iterative blur &  try multichann
 #                   data_path = testing_data_path, write_path = test_write_path)
 
 # Local Paths
-LocalSetup = LocalSetup(env='sci')
+LocalSetup = LocalSetup(env=args.env)
 
 # Load the Retna data set images and hand segmentations
 # (training,test both Stare and Drive), map masks, and reformat images
@@ -51,7 +52,7 @@ if collect_datasets:
     MSCRetinaDataSet = MSCRetinaDataset(with_hand_seg=True)
     # get each set independently for msc computation
     drive_training_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False
-                                                                    , drive_training_only=True, env='sci')
+                                                                    , drive_training_only=True, env=args.env)
     ##drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True)
     ##stare_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, stare_only=True)
 
@@ -147,10 +148,10 @@ def learn_embedding():
                                        ,str(persistence_values[0])+str(blur_sigmas[0]) +'test_walk')
     random_walk_embedding(mscgnn.G, walk_length=10, number_walks=20, out_file=walk_embedding_file)
 
-    mscgnn.unsupervised(aggregator=aggregator, slurm=False)
+    mscgnn.unsupervised(aggregator=aggregator, slurm=args.env)
 
     # hyper-param for gnn
-    learning_rate = 2e-8
+    learning_rate = .25
     polarity = 25
     weight_decay = 0.1
     epochs = 10
