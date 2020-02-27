@@ -290,7 +290,7 @@ class MSCGNN:
     def train(self,generate_embedding=False, graph = None, features = None, node_id = None, node_classes = None,
               normalize = True, train_prefix = '',  embedding_name = '', load_walks=False,
               num_neg = None, learning_rate=None, epochs=200, weight_decay=0.01,
-              polarity=6, depth=3):
+              polarity=6, depth=3, gpu=0):
         """
         ### trains on --train_prefix (adds -G.json to param passed when searching for file)
         ### uses --model aggregator for training
@@ -328,7 +328,8 @@ class MSCGNN:
                             epochs=epochs,
                             weight_decay = weight_decay,
                             polarity=polarity,
-                            depth=depth)
+                            depth=depth,
+                            gpu=gpu)
 
 
         
@@ -353,7 +354,8 @@ class MSCGNN:
                            epochs=epochs,
                            weight_decay=weight_decay,
                            polarity=polarity,
-                           depth=depth)
+                           depth=depth,
+                           gpu=gpu)
 
     def embed_inference_msc(self, inference_mscgnn, persistence, blur, inference_embedding_file=None,walk_embedding_file=None):
         aggregator = ['graphsage_maxpool', 'gcn', 'graphsage_seq', 'graphsage_maxpool'
