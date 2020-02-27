@@ -19,7 +19,7 @@ from topoml.graphsage.utils import random_walk_embedding
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--gpu',default=None, type=str, help="coma separated list of gpus to use")
+parser.add_argument('--gpu',default='0', type=str, help="coma separated list of gpus to use")
 parser.add_argument('--env', default='multivax',  type=str, help="system to run, if multivax hard assign gpu, sci assumes slurm")
 args = parser.parse_args()
 
@@ -164,7 +164,8 @@ def learn_embedding():
 
     mscgnn.train( embedding_name = embedding_name, load_walks=walk_embedding_file
                   , learning_rate=learning_rate, epochs=epochs
-                  , weight_decay=weight_decay, polarity=polarity, depth=depth)
+                  , weight_decay=weight_decay, polarity=polarity
+                  , depth=depth, gpu=args.gpu)
 
 
 def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
