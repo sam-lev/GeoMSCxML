@@ -9,9 +9,9 @@ import os
 #             
 ##################################
 class LocalSetup:
-        def __init__(self):
+        def __init__(self, env='multivax'):
             # Paths for Multivax
-            multivax = False
+            multivax = 'multivax' == env
             sci = not multivax
             self.paths_for_multivax = """ training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/HW3/datasets/drive/DRIVE/training/images"
                         #training_data_path = "/Users/multivax/Documents/PhD/4spring19/DeepLearning/DeepLearning/final_project/results/neuron_msc"

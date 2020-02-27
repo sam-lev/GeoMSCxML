@@ -62,7 +62,7 @@ blur_sigmas = [1.0]  # 1.0, 2.0, 5.0, 10] # add iterative blur &  try multichann
 #                   data_path = testing_data_path, write_path = test_write_path)
 
 # Local Paths
-LocalSetup = LocalSetup()
+LocalSetup = LocalSetup(env='sci')
 
 # Load the Retna data set images and hand segmentations
 # (training,test both Stare and Drive), map masks, and reformat images
