@@ -171,7 +171,7 @@ class MSCSegmentation:
                     msc = mscnn.compute_geomsc(image_filename =  os.path.join(data_path,im_path)
                                                ,image=image
                                                ,X=image.shape[2], Y=image.shape[1]
-                                               ,geomsc_exec_path=os.path.join(project_base_path,'..')
+                                               ,geomsc_exec_path=os.path.join(LocalSetup.project_base_path,'..')
                                                , persistence = pers
                                                , blur=True
                                                , blur_sigma=blur_sigma
