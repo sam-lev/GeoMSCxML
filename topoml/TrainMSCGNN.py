@@ -74,8 +74,7 @@ if compute_msc:
                                                                    , blur_sigmas=blur_sigmas
                                                                    , data_buffer=drive_training_dataset
                                                                    , data_path=LocalSetup.drive_training_path
-                                                                   ,
-                                                                   segmentation_path=LocalSetup.drive_training_segmentation_path
+                                                                   ,segmentation_path=LocalSetup.drive_training_segmentation_path
                                                                    , write_path=LocalSetup.drive_training_base_path
                                                                    , label=True
                                                                    , save=True
