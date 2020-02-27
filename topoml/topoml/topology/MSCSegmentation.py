@@ -8,6 +8,7 @@ from topoml.topology.mscnn_segmentation import mscnn_segmentation
 from topoml.ui.ArcSelector import ArcSelector
 from topoml.ml.MSCSample import MSCSample
 #class with local file paths
+from topoml.ui.LocalSetup import LocalSetup as LS
 
 sys.path.append(os.getcwd())
 
