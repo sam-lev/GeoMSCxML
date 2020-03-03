@@ -125,7 +125,7 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
     #embedding_path_name += ("_{lr:0.6f}").format(lr=learning_rate)
     #mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur
     #                           ,inference_embedding_file=inference_embedding_name, embedding_name=embedding_name
-    #inference_mscgnn = mscgnn
+    inference_mscgnn = mscgnn
 
     # if embedding graph made with test/train set the same (and named the same)
     if trained_prefix is not None:
@@ -152,7 +152,7 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
     inference_msc = inference_mscgnn.geomsc
     inference_msc.draw_segmentation(filename="test.tiff"
                                     ,original_image=inference_image
-                                    ,X=inference_image.shape[0],Y=inference_image.shape[1]
+                                    ,X=inference_image.shape[0],Y=inference_image.shape[2]
                                     ,reshape_out=False ,dpi = 50
                                     , valley=True, ridge=True)
     mscgnn.show_gnn_classification(pred_graph_prefix=embedding_name, train_view=False)  # embedding_name)
