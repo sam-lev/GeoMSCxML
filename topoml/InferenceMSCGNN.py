@@ -120,9 +120,8 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                                        , str(persistence) + str(blur) + 'test_walk')
     inference_embedding_name = 'inference_msc-embedding-pers-'+str(persistence)+'blur-'+str(blur)
 
-    mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur
-                               ,inference_embedding_file=inference_embedding_name, embedding_name=embedding_name
-                               , walk_embedding_file=walk_embedding_file, gpu=gpu, env=env)
+    #mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur
+    #                           ,inference_embedding_file=inference_embedding_name, embedding_name=embedding_name
 
     embedding_path_name = embedding_name + '-unsup-json_graphs' + '/' + aggregator + '_' + 'big'
     embedding_path_name += ("_{lr:0.6f}").format(lr=learning_rate)
