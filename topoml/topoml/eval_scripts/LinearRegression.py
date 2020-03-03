@@ -37,6 +37,9 @@ class LinearRegression:
         self.embedding_path = embedding_path
         self.inference_embedding_path = inference_embedding_path
         self.G = G
+        self.labels = labels
+        self.id_map = id_map
+        self.num_neg = num_neg
 
         if MSCGNN_infer is not None:
             self.G_infer = MSCGNN_infer.G
