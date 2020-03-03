@@ -192,8 +192,10 @@ class GeoMSC:
         def is_valley_arc(arc, nodes):
             return False #2 not in [ nodes[arc.node_ids[0]].index, nodes[arc.node_ids[1]].index,]
 
-
-        mapped_image = np.transpose(original_image, (1, 2, 0))#original_image.shape[2]))
+        if original_image.shape[0] == 3:
+            mapped_image = np.transpose(original_image, (1, 2, 0))#original_image.shape[2]))
+        else:
+            mapped_image = original_image
         mapped_image *= 255
 
         for arc in self.msc.arcs:
