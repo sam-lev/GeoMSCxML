@@ -65,13 +65,13 @@ class unsupervised:
         self.node_classes = None
         self.slurm = slurm
 
-    def train(self,  G=None, feats=None, id_map=None, walks=None, class_map=None
+    def train(self, G=None, feats=None, id_map=None, walks=None, class_map=None
               , train_prefix='', load_walks=False, number_negative_samples = None
               , number_positive_samples=None, embedding_file_out = ''
               , learning_rate = None, depth = 3, epochs = 200
               , positive_arcs = [], negative_arcs = []
-              , weight_decay = 0.001, polarity = 6, generate_embedding=False
-              ,gpu=0):
+              , weight_decay = 0.001, polarity = 6, use_embedding=None
+              , gpu=0):
         slurm = self.slurm
         if slurm != 'slurm':
             os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
@@ -106,7 +106,13 @@ class unsupervised:
         concat = False #mean aggregator only one to perform concat
         self.dim_feature_space = int((dim+1)/2) if concat else dim
 
-        self.generate_embedding = generate_embedding
+        self.generate_embedding = use_embedding is not None
+        if use_embedding is not None:
+            G = use_embedding[0] # graph to embed
+            feats = use_embedding[1] # features of graph to embed
+            id_map = use_embedding[2] # learned embedding id map
+            walks = use_embedding[3] if load_walks is None else []
+            class_map = []
         # Collect training data
         # train from saved file, assumes pre-labeled train/test nodes
         if train_prefix and G is None:
@@ -114,7 +120,7 @@ class unsupervised:
             self.train_prefix = train_prefix
            
         
-            train_data = load_data(train_prefix, load_walks=False, scheme_required = True, train_or_test='train')
+            train_data = load_data(train_prefix, load_walks=load_walks, scheme_required = True, train_or_test='train')
 
             self.number_negative_samples = train_data[len(train_data)-2]
             number_positive_samples = train_data[len(train_data)-1]
@@ -133,7 +139,7 @@ class unsupervised:
             
         # train from cvt sampled graph and respective in/out arcs as train
         elif positive_arcs and negative_arcs:
-            train_data = load_data(positive_arcs, negative_arcs, load_walks=False, scheme_required = True, train_or_test='train')
+            train_data = load_data(positive_arcs, negative_arcs, load_walks=load_walks, scheme_required = True, train_or_test='train')
             self.number_negative_samples =  len(negative_arcs)
             number_samples = len(positive_arcs)+len(negative_arcs)
             proportion_negative = int(number_samples/float(self.number_negative_samples))
@@ -142,7 +148,18 @@ class unsupervised:
         self.features = train_data[1]
         self.id_map = train_data[2]
         self.node_classes = train_data[4]
-        
+
+        if load_walks:
+            walks = []
+            if isinstance(self.graph.nodes()[0], int):
+                conversion = lambda n: int(n)
+            else:
+                conversion = lambda n: n
+            with open('./data/random_walks/' + load_walks + "-walks.txt") as fp:
+                for line in fp:
+                    walks.append(map(conversion, line.split()))
+        train_data[3] = walks
+
         tf.app.flags.DEFINE_boolean('log_device_placement', False,
                                     """Whether to log device placement.""")
         #core params..
@@ -423,8 +440,10 @@ class unsupervised:
 
         train_adj_info = tf.assign(adj_info, minibatch.adj)
         val_adj_info = tf.assign(adj_info, minibatch.test_adj)
+
         if self.generate_embedding:
             self.FLAGS.epochs = 1
+
         for epoch in range(self.FLAGS.epochs): 
             minibatch.shuffle() 
 

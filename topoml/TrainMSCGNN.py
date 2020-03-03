@@ -126,9 +126,12 @@ def learn_embedding():
     image, msc, mask, segmentation = train_dataloader[0]
     msc = msc[(persistence_values[pers], blur_sigmas[blur])]
     mscgnn = MSCGNN(msc=msc)
+    # add number id to name
+    msc_graph_name = 'msc-feature-graph-' + str(persistence_values[pers]) + 'blur-' + str(blur)
     mscgnn.msc_feature_graph(image=np.transpose(np.mean(image,axis=1),(1,0)), X=image.shape[0], Y=image.shape[2]
                      ,validation_samples=1, validation_hops=20
-                     , test_samples=1, test_hops=20, accuracy_threshold=0.1)
+                     , test_samples=1, test_hops=20, accuracy_threshold=0.1
+                     ,write_json_graph_path='./data', name=msc_graph_name)
 
     print(" %%%%% feature graph complete")
 
@@ -167,48 +170,6 @@ def learn_embedding():
                   , learning_rate=learning_rate, epochs=epochs
                   , weight_decay=weight_decay, polarity=polarity
                   , depth=depth, gpu=args.gpu)
-
-
-def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
-                     embedding_name, learning_rate, aggregator, persistence, blur):
-
-    # if embedding graph made with test/train set the same (and named the same)
-    if embedding_name is not None:
-        mscgnn.classify( embedding_prefix=embedding_name, aggregator = aggregator
-                     , learning_rate=learning_rate)
-    else:
-        # Can also pass graph if contained in gnn
-        inference_mscgnn = MSCGNN(msc=inference_msc)
-
-        inference_mscgnn.msc_feature_graph(image=np.transpose(np.mean(inference_image, axis=1), (1, 0)), X=inference_image.shape[0], Y=inference_image.shape[2]
-                                 , validation_samples=1, validation_hops=20
-                                 , test_samples=1, test_hops=20, accuracy_threshold=0.1)
-
-        walk_embedding_file = os.path.join(LocalSetup.project_base_path, 'datasets', 'walk_embeddings'
-                                           , str(persistence) + str(blur) + 'test_walk')
-        inference_embedding_name = 'msc-embedding-pers-'+str(persistence)+'blur-'+str(blur)
-
-        mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur,inference_embedding_file=inference_embedding_name, walk_embedding_file=walk_embedding_file)
-        # adjust classification to use mscgnn for inference with known
-        # gnn and get new inference mscgnn embedding.
-        mscgnn.classify(MSCGNN_infer=inference_mscgnn)
-
-
-    # Hand select test graph
-    """gnn.select_msc( train_or_test='test', group_name= train_group_name,bounds=[[451,700],[301,600]], write_json=True, write_msc=True, load_msc=False)
-    """
-
-    # if loading graph (test/train) for classification
-    ###gnn.classify(test_prefix=train_group_name, trained_prefix=train_group_name, embedding_prefix=embedding_name,
-    ###            aggregator=aggregator, learning_rate=learning_rate)
-
-
-    # Show labaling assigned by trained model
-    mscgnn.show_gnn_classification(pred_graph_prefix=embedding_name, train_view=False)  # embedding_name)
-
-    # see train and val sets, must put in directory log-dir and make new folder
-    # with appropriate name of train graph, e.g. looks for graph in log-dir
-    ###mscgnn.show_gnn_classification(pred_graph_prefix=train_group_name, train_view=True)
 
 
 learn_embedding()

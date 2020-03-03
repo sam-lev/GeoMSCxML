@@ -290,7 +290,7 @@ class MSCGNN:
     def train(self,generate_embedding=False, graph = None, features = None, node_id = None, node_classes = None,
               normalize = True, train_prefix = '',  embedding_name = '', load_walks=False,
               num_neg = None, learning_rate=None, epochs=200, weight_decay=0.01,
-              polarity=6, depth=3, gpu=0):
+              polarity=6, depth=3, gpu=0, use_embedding=None):
         """
         ### trains on --train_prefix (adds -G.json to param passed when searching for file)
         ### uses --model aggregator for training
@@ -304,7 +304,7 @@ class MSCGNN:
         
         if self.G and not train_prefix:#and not cvt_train:
             
-            G,feats,id_map\
+            G,feats,self.id_map\
                 , walks, class_map\
                 , number_negative_samples\
                 , number_positive_samples = format_data(dual=self.G
@@ -322,14 +322,15 @@ class MSCGNN:
                             number_negative_samples = len(self.negative_arcs),
                             number_positive_samples = number_positive_samples,
                             feats = feats,
-                            id_map=id_map,
+                            id_map=self.id_map,
                             class_map=class_map,
                             embedding_file_out = embedding_name,
                             epochs=epochs,
                             weight_decay = weight_decay,
                             polarity=polarity,
                             depth=depth,
-                            gpu=gpu)
+                            gpu=gpu,
+                            use_embedding=use_embedding)
 
 
         
@@ -357,7 +358,8 @@ class MSCGNN:
                            depth=depth,
                            gpu=gpu)
 
-    def embed_inference_msc(self, inference_mscgnn, persistence, blur, inference_embedding_file=None,walk_embedding_file=None):
+    def embed_inference_msc(self, inference_mscgnn, embedding_name
+                            , persistence=None, blur=None, inference_embedding_file=None,walk_embedding_file=None):
         aggregator = ['graphsage_maxpool', 'gcn', 'graphsage_seq', 'graphsage_maxpool'
             , 'graphsage_meanpool', 'graphsage_seq', 'n2v'][4]
 
@@ -377,15 +379,34 @@ class MSCGNN:
         learning_rate = 2e-3
         polarity = 25
         weight_decay = 0.01
-        epochs = 10
+        epochs = 1
         depth = 3
         batch_size = len(inference_mscgnn.nodes)
-        self.train(generate_embedding=True,  embedding_name=inference_embedding_file, load_walks=walk_embedding_file
+
+        G, feats, id_map, walks \
+            , class_map, number_negative_samples \
+            , number_positive_samples = format_data(dual=self.G, features=self.features, node_id=self.node_id
+                                                         , id_map=self.node_id, node_classes=self.node_classes
+                                                         , train_or_test='', scheme_required=True, load_walks=False)
+
+        embedding_path = os.path.join('.','log-dir', embedding_name)
+        learned_ids = [n for n in G.nodes()]
+        embeds = np.load(embedding_path + "/val.npy")
+        id_map = {}
+        with open(embedding_path + "/val.txt") as fp:
+            for i, line in enumerate(fp):
+                id_map[int(line.strip())] = i
+        #embeds = embeds[[id_map[id] for id in learned_ids]]
+
+        use_embedding = (inference_mscgnn.G, inference_mscgnn.features, id_map, None, [], [], [])
+        self.train(generate_embedding=True, use_embedding=use_embedding, embedding_name=inference_embedding_file, load_walks=walk_embedding_file
                      , learning_rate=learning_rate, epochs=epochs
                      , weight_decay=weight_decay, polarity=polarity, depth=depth)
 
     """Perform classification using learned graph representation from GNN"""
-    def classify(self, MSCGNN_infer = None, test_prefix = None,  trained_prefix=None, embedding_prefix=None, aggregator='graphsage_mean', learning_rate = None):
+    def classify(self, MSCGNN_infer = None, test_prefix = None,  trained_prefix=None
+                 , embedding_prefix=None, aggregator='graphsage_mean'
+                 , learning_rate = None, MSCGNN = None):
         cwd = './'
         #embedding_path =  os.path.join(cwd,'log-dir',embedding_prefix+'-unsup-json_graphs','graphsage_mean_small_'+'0.100000')
         embedding_p = embedding_prefix+'-unsup-json_graphs'+'/'+aggregator+'_'+'big'
@@ -395,7 +416,10 @@ class MSCGNN:
             test_p =  os.path.join(cwd,'data','json_graphs',test_prefix)
             trained_prfx = trained_prefix
             test_prfx = test_prefix
-            LinearRegression(test_path = test_p, MSCGNN_infer = MSCGNN_infer, test_prefix = test_prfx, trained_path = trained_p, trained_prefix = trained_prfx, embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
+            LinearRegression(test_path = test_p, MSCGNN_infer = MSCGNN_infer
+                             , test_prefix = test_prfx, trained_path = trained_p
+                             , trained_prefix = trained_prfx, MSCGNN = self
+                             , embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
             
         elif self.G:
              G,feats,id_map, walks, class_map, number_negative_samples, number_positive_samples = format_data(dual=self.G, features=self.features, node_id=self.node_id, id_map=self.node_id, node_classes=self.node_classes, train_or_test = '', scheme_required = True, load_walks=False)
@@ -406,6 +430,7 @@ class MSCGNN:
                               labels=class_map,
                               num_neg = len(self.negative_arcs),
                               id_map = id_map,
+                              MSCGNN = self,
                               embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
 
         
