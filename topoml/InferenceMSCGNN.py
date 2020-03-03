@@ -36,9 +36,9 @@ if collect_datasets:
     # get each set independently for msc computation
     drive_training_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False
                                                                     , drive_training_only=True, env=args.env)
-    drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True)
+    drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True, env=args.env)
     drive_test_dataset = MSCRetinaDataset(drive_test_retina_array, split=None, do_transform=False, with_hand_seg=True)
-    ##stare_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, stare_only=True)
+    ##stare_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, stare_only=True, env=args.env)
 
     # dataset buffers to use for training:
     drive_training_dataset = MSCRetinaDataset(drive_training_retina_array, split=None, do_transform=False,
@@ -63,7 +63,7 @@ if compute_msc:
 
     drive_test_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
                                           , data_buffer=drive_test_dataset, data_path = LocalSetup.drive_test_path, segmentation_path=LocalSetup.drive_test_segmentation_path
-                                                      ,write_path = LocalSetup.drive_test_base_path, label=True, save=True, valley=True, ridge=True)
+                                                      ,write_path = LocalSetup.drive_test_base_path, label=True, save=True, valley=True, ridge=True, env=args.env)
     """stare_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
                                           ,data_buffer=stare_dataset, data_path = LocalSetup.stare_training_data_path, segmentation_path=LocalSetup.stare_segmentations
                                                       ,write_path = LocalSetup.stare_base_path, label=True, save=True, valley=True, ridge=True)"""
@@ -120,12 +120,13 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                                        , str(persistence) + str(blur) + 'test_walk')
     inference_embedding_name = 'inference_msc-embedding-pers-'+str(persistence)+'blur-'+str(blur)
 
+    embedding_path_name = embedding_name + '-unsup-json_graphs' + '/' + aggregator + '_' + 'big'
+    embedding_path_name += ("_{lr:0.6f}").format(lr=learning_rate)
     #mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur
     #                           ,inference_embedding_file=inference_embedding_name, embedding_name=embedding_name
 
-    embedding_path_name = embedding_name + '-unsup-json_graphs' + '/' + aggregator + '_' + 'big'
-    embedding_path_name += ("_{lr:0.6f}").format(lr=learning_rate)
-# if embedding graph made with test/train set the same (and named the same)
+
+    # if embedding graph made with test/train set the same (and named the same)
     if trained_prefix is not None:
         mscgnn.classify(embedding_prefix=embedding_name,MSCGNN_infer=inference_mscgnn,
                          aggregator=aggregator, embedding_path_name=embedding_path_name
