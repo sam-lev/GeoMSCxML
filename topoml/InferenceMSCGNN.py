@@ -128,13 +128,13 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
 
     # if embedding graph made with test/train set the same (and named the same)
     if trained_prefix is not None:
-        inference_msc = mscgnn.classify(embedding_prefix=embedding_name,MSCGNN_infer=inference_mscgnn,
+        inference_mscgnn = mscgnn.classify(embedding_prefix=embedding_name,MSCGNN_infer=inference_mscgnn,
                          aggregator=aggregator, embedding_path_name=embedding_path_name
                         ,trained_prefix=trained_prefix, learning_rate=learning_rate)
     else:
         # adjust classification to use mscgnn for inference with known
         # gnn and get new inference mscgnn embedding.
-        inference_msc = mscgnn.classify(MSCGNN_infer=inference_mscgnn, MSCGNN=mscgnn, embedding_path_name=embedding_path_name
+        inference_mscgnn = mscgnn.classify(MSCGNN_infer=inference_mscgnn, MSCGNN=mscgnn, embedding_path_name=embedding_path_name
                         , embedding_prefix=embedding_name, learning_rate=learning_rate, aggregator=aggregator)
 
 
@@ -154,7 +154,7 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                                     ,X=304,Y=352
                                     ,reshape_out=False ,dpi = 50
                                     , valley=True, ridge=True)
-    #mscgnn.show_gnn_classification(pred_graph_prefix=embedding_name, train_view=False)  # embedding_name)
+    mscgnn.show_gnn_classification(pred_graph_prefix=embedding_name, train_view=False)  # embedding_name)
 
     # see train and val sets, must put in directory log-dir and make new folder
     # with appropriate name of train graph, e.g. looks for graph in log-dir
