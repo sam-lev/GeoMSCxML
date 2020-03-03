@@ -43,6 +43,7 @@ class LinearRegression:
         self.with_features=with_features
 
         if MSCGNN_infer is not None:
+            self.mscgnn_infer = MSCGNN_infer
             self.G_infer = MSCGNN_infer.G
             self.inference_node_ids = MSCGNN_infer.node_id
             #self.inference_id_map = self.inference_node_ids
@@ -63,6 +64,7 @@ class LinearRegression:
                                                                ,node_classes=self.inference_node_classes
                                                                ,train_or_test='', scheme_required=True, load_walks=False)
         if MSCGNN is not None:
+            self.mscgnn = MSCGNN
             self.G = MSCGNN.G
             self.node_ids = MSCGNN.node_id
             self.node_classes = MSCGNN.node_classes
@@ -123,6 +125,10 @@ class LinearRegression:
             for id in test_ids:
                 pred =log.predict(embeds[[id_map[id]]])[0]
                 test_graph.node[id]["prediction"] = [int(pred[0]),int(pred[1])]
+            if self.mscgnn_infer is not None:
+                for id, arc in zip(test_ids, self.mscgnn_infer.arcs):
+                    pred = log.predict(embeds[[id_map[id]]])[0]
+                    arc.label_accuracy =  [int(pred[0]),int(pred[1])]
 
             pred_path = os.path.join(self.embedding_path.split("/")[:-1][0], self.embedding_path.split("/")[:-1][1],self.embedding_path.split("/")[:-1][2],'predicted_graph-G.json')
             
@@ -132,6 +138,8 @@ class LinearRegression:
                 write_form = json_graph.node_link_data(test_graph)
                 json.dump(write_form, graph_file)
             print("Prediction written to: ", pred_path)
+            if self.mscgnn_infer is not None:
+                return self.mscgnn_infer
 
     def run(self):
         
@@ -229,3 +237,5 @@ class LinearRegression:
                 self.run_regression(train_embeds, train_labels, test_embeds, test_labels)
             else:
                 self.run_regression(train_embeds, train_labels, test_embeds, test_labels, test_ids=test_ids, test_graph=G_infer, embeds=embeds, id_map=id_map)
+        if self.mscgnn_infer is not None:
+            return self.mscgnn_infer
