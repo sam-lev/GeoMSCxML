@@ -223,7 +223,7 @@ class LinearRegression:
                     id_map[int(line.strip())] = i
             train_embeds = embeds[[id_map[id] for id in train_ids]]
 
-            if self.inference_embedding_path and not self.inference_id_map:
+            if False and self.inference_embedding_path and not self.inference_id_map:
                 inference_embeds = np.load(self.inference_embedding_path + "/val.npy")
                 inference_id_map = {}
                 with open(self.inference_embedding_path + "/val.txt") as fp:
@@ -231,7 +231,7 @@ class LinearRegression:
                         inference_id_map[int(line.strip())] = i
                 test_embeds = inference_embeds[[inference_id_map[id] for id in test_ids]]
             else:
-                test_embeds = embeds[[self.inference_id_map[id] for id in test_ids]]
+                test_embeds = embeds[[self.id_map[id] for id in test_ids]]
             print("Running regression..")
             if not self.label_node_predictions:
                 self.run_regression(train_embeds, train_labels, test_embeds, test_labels)

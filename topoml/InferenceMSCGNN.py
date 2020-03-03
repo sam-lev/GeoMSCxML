@@ -125,7 +125,7 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
     #mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur
     #                           ,inference_embedding_file=inference_embedding_name, embedding_name=embedding_name
 
-
+    inference_mscgnn = mscgnn
     # if embedding graph made with test/train set the same (and named the same)
     if trained_prefix is not None:
         inference_mscgnn = mscgnn.classify(embedding_prefix=embedding_name,MSCGNN_infer=inference_mscgnn,
@@ -181,7 +181,7 @@ mscgnn.msc_feature_graph(image=np.transpose(np.mean(image, axis=1), (1, 0)), X=i
 aggregator = ['graphsage_maxpool', 'gcn', 'graphsage_seq','graphsage_maxpool', 'graphsage_meanpool','graphsage_seq', 'n2v'][4]
 learning_rate = 0.25
 
-GeoMSC_Inference(inference_msc=mscgnn#inference_msc
+GeoMSC_Inference(inference_msc=inference_msc
                  , mscgnn=mscgnn
                  , inference_image=inference_image
                  ,aggregator=aggregator
