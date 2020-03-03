@@ -90,7 +90,7 @@ class MSCGNN:
             print('.writing graph family data')
             s = time()
             if not os.path.exists(os.path.join(write_json_graph_path, 'json_graphs')):
-                os.mkdir(os.path.join(write_json_graph_path, 'json_graphs'))
+                os.makedirs(os.path.join(write_json_graph_path, 'json_graphs'))
             graph_file_path = os.path.join(write_json_graph_path, 'json_graphs')
             # group_name = 'left'
             for graph_data, f_name in zip([self.G, self.node_id, self.node_classes, self.features],
