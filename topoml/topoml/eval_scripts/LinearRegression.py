@@ -28,7 +28,7 @@ class LinearRegression:
                  ,  embedding_path = None, inference_embedding_path=None, setting = 'test'
                  , G=None, MSCGNN_infer=None, MSCGNN=None,
                  features = None, labels=None, num_neg = None,
-                 id_map=None, walks = None):
+                 id_map=None, walks = None, with_features=False):
 
         self.trained_path = trained_path
         self.test_path = test_path
@@ -40,6 +40,7 @@ class LinearRegression:
         self.labels = labels
         self.id_map = id_map
         self.num_neg = num_neg
+        self.with_features=with_features
 
         if MSCGNN_infer is not None:
             self.G_infer = MSCGNN_infer.G
@@ -173,9 +174,9 @@ class LinearRegression:
         print("Total testing samples: ", test_labels.shape)
         
 
-        if self.trained_prefix == "feat" or self.feats is not None:
+        if self.trained_prefix == "feat" or self.with_features == True:
             print("\n", "Using only features (not embedding).","\n")
-            if not self.feats:
+            if self.feats is None:
                 feats = np.load(self.trained_path+"-feats.npy")
             else:
                 feats = self.feats
