@@ -423,24 +423,25 @@ class MSCGNN:
             test_p =  os.path.join(cwd,'data','json_graphs',test_prefix)
             trained_prfx = trained_prefix
             test_prfx = test_prefix
-            LinearRegression(test_path = test_p, MSCGNN_infer = MSCGNN_infer
-                             , test_prefix = test_prfx, trained_path = trained_p
-                             , trained_prefix = trained_prfx, MSCGNN = self
-                             , embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
+            mscgnn_infer = LinearRegression(test_path = test_p, MSCGNN_infer = MSCGNN_infer
+                                , test_prefix = test_prfx, trained_path = trained_p
+                                 , trained_prefix = trained_prfx, MSCGNN = self
+                                , embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
             
         elif self.G:
              G,feats,id_map, walks, class_map, number_negative_samples, number_positive_samples = format_data(dual=self.G, features=self.features, node_id=self.node_id, id_map=self.node_id, node_classes=self.node_classes, train_or_test = '', scheme_required = True, load_walks=False)
              
-             LinearRegression(G=G,
-                              MSCGNN_infer=MSCGNN_infer,
-                              features = feats,
-                              labels=class_map,
-                              num_neg = len(self.negative_arcs),
-                              id_map = id_map,
-                              MSCGNN = self,
-                              embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
+             mscgnn_infer = LinearRegression(G=G,
+                                  MSCGNN_infer=MSCGNN_infer,
+                                features = feats,
+                                labels=class_map,
+                                num_neg = len(self.negative_arcs),
+                                id_map = id_map,
+                                MSCGNN = self,
+                                embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
 
-        
+        if mscgnn_infer is not None:
+            return mscgnn_infer
         
         
         #eval_scripts/test_eval.py json_graphs/left_train_thro json_graphs/right_test_thro log-dir/left_thro_rnd2-unsup-left_train_thro/graphsage_mean_small_0.000010 left_train right_test True test
