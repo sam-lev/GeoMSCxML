@@ -191,8 +191,8 @@ class GeoMSC:
 
         def is_valley_arc(arc, nodes):
             return False #2 not in [ nodes[arc.node_ids[0]].index, nodes[arc.node_ids[1]].index,]
-        print("image shape OG >>>> ")
-        print(original_image.shape)
+        #print("image shape OG >>>> ")
+        #print(original_image.shape)
         if original_image.shape[0] == 3:
             mapped_image = np.transpose(original_image, (2, 1, 0))#original_image.shape[2]))
         elif original_image.shape[1] == 3:
@@ -243,7 +243,7 @@ class GeoMSC:
                     marker=",",
                     zorder=3,
                 )
-                self.arc_drawings[arc_index].set_visible(True)"""
+                self.arc_drawings[arc_index].set_visible(True)
 
         if self.use_ridge_arcs:
             arc_mask = make_mc_arc_mask(None, self, X, Y, invert)  # False)
@@ -269,7 +269,7 @@ class GeoMSC:
                 zorder=2,
             )
 
-        """
+        
         extrema_points = [[], [], []]
         for node in self.msc.nodes.values():
             x, y = node.xy

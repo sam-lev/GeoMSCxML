@@ -57,13 +57,13 @@ if compute_msc:
                                                                    ,segmentation_path=LocalSetup.drive_training_segmentation_path
                                                                    , write_path=LocalSetup.drive_training_base_path
                                                                    , label=True
-                                                                   , save=True
+                                                                   , save=False
                                                                    , valley=True, ridge=True
                                                                    ,env=args.env)
 
     drive_test_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
                                           , data_buffer=drive_test_dataset, data_path = LocalSetup.drive_test_path, segmentation_path=LocalSetup.drive_test_segmentation_path
-                                                      ,write_path = LocalSetup.drive_test_base_path, label=True, save=True, valley=True, ridge=True, env=args.env)
+                                                      ,write_path = LocalSetup.drive_test_base_path, label=True, save=False, valley=True, ridge=True, env=args.env)
     """stare_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
                                           ,data_buffer=stare_dataset, data_path = LocalSetup.stare_training_data_path, segmentation_path=LocalSetup.stare_segmentations
                                                       ,write_path = LocalSetup.stare_base_path, label=True, save=True, valley=True, ridge=True)"""
