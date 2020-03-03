@@ -194,7 +194,7 @@ class GeoMSC:
         print("image shape OG >>>> ")
         print(original_image.shape)
         if original_image.shape[0] == 3:
-            mapped_image = np.transpose(original_image, (1, 2, 0))#original_image.shape[2]))
+            mapped_image = np.transpose(original_image, (2, 1, 0))#original_image.shape[2]))
         elif original_image.shape[1] == 3:
             mapped_image = np.transpose(original_image, (0, 2, 1))
         else:
