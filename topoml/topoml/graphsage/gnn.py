@@ -57,13 +57,13 @@ from .utils import load_data
 #  - number neg samples plays large role cross entropy log of class seems to be log of number negative used. 
 
 class unsupervised:
-    def __init__(self, aggregator = 'graphsage_mean', slurm = False):
+    def __init__(self, aggregator = 'graphsage_mean', env = None):
         self.aggregator =  aggregator
         self.graph = None
         self.features = None
         self.id_map = None
         self.node_classes = None
-        self.slurm = slurm
+        self.slurm = env if env is None else env == 'slurm'
 
     def train(self, G=None, feats=None, id_map=None, walks=None, class_map=None
               , train_prefix='', load_walks=False, number_negative_samples = None
@@ -71,8 +71,9 @@ class unsupervised:
               , learning_rate = None, depth = 3, epochs = 200
               , positive_arcs = [], negative_arcs = []
               , weight_decay = 0.001, polarity = 6, use_embedding=None
-              , gpu=0):
-        slurm = self.slurm
+              , gpu=0, env='mutivax'):
+
+        slurm = self.slurm if self.slurm is not None else env == 'slurm'
         if slurm != 'slurm':
             os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 

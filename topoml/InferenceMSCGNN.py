@@ -104,7 +104,7 @@ inference_msc = msc[(persistence_values[pers], blur_sigmas[blur])]
 
 def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                      embedding_name, learning_rate, aggregator
-                     , persistence, blur, trained_prefix=None):
+                     , persistence, blur, trained_prefix=None, gpu=0, env=None):
 
 
     # Can also pass graph if contained in gnn
@@ -120,9 +120,9 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                                        , str(persistence) + str(blur) + 'test_walk')
     inference_embedding_name = 'inference_msc-embedding-pers-'+str(persistence)+'blur-'+str(blur)
 
-    #mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur
-    #                           ,inference_embedding_file=inference_embedding_name, embedding_name=embedding_name
-    #                           , walk_embedding_file=walk_embedding_file)
+    mscgnn.embed_inference_msc(inference_mscgnn=inference_mscgnn,persistence=persistence,blur=blur
+                               ,inference_embedding_file=inference_embedding_name, embedding_name=embedding_name
+                               , walk_embedding_file=walk_embedding_file, gpu=gpu, env=env)
 
     embedding_path_name = embedding_name + '-unsup-json_graphs' + '/' + aggregator + '_' + 'big'
     embedding_path_name += ("_{lr:0.6f}").format(lr=learning_rate)
@@ -182,4 +182,6 @@ GeoMSC_Inference(inference_msc=inference_msc
                  ,persistence=persistence_values[pers]
                  ,blur=blur_sigmas[blur]
                  ,learning_rate=0.25
-                 , embedding_name='msc-embedding-pers-0.001blur-0-unsup-json_graphs/graphsage_meanpool_big_0.250000')
+                 ,embedding_name='msc-embedding-pers-0.001blur-0-unsup-json_graphs/graphsage_meanpool_big_0.250000'
+                 ,gpu=args.gpu
+                 ,env=args.env)
