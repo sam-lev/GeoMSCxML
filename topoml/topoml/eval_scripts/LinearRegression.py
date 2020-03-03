@@ -98,13 +98,13 @@ class LinearRegression:
         
     def run_regression(self, train_embeds=None, train_labels=None, test_embeds=None, test_labels=None, test_ids = None, test_graph = None, embeds=None, id_map=None):
         np.random.seed(1)
-        from sklearn.linear_model import SGDClassifier
+        from sklearn.linear_model import LogisticRegression #SGDClassifier
         from sklearn.dummy import DummyClassifier
         from sklearn.metrics import f1_score
         from sklearn.multioutput import MultiOutputClassifier
         dummy = MultiOutputClassifier(DummyClassifier())
         dummy.fit(train_embeds, train_labels)
-        log = MultiOutputClassifier(SGDClassifier(loss="log"), n_jobs=2)
+        log = MultiOutputClassifier(LogisticRegression(multi_class='multinomial'), n_jobs=2)
 
         log.fit(train_embeds, train_labels)
         prediction = log.predict(test_embeds)
@@ -127,7 +127,8 @@ class LinearRegression:
                 test_graph.node[id]["prediction"] = [int(pred[0]),int(pred[1])]
             if self.mscgnn_infer is not None:
                 for id, arc in zip(test_ids, self.mscgnn_infer.arcs):
-                    pred = log.predict(embeds[[id_map[id]]])[0]
+                    pred = log.predict_proba(embeds[[id_map[id]]])#[0]
+                    print("pred", pred)
                     arc.label_accuracy =  float(max(pred))#[0])#[int(pred[0]),int(pred[1])]
 
             pred_path = os.path.join(self.embedding_path.split("/")[:-1][0], self.embedding_path.split("/")[:-1][1],self.embedding_path.split("/")[:-1][2],'predicted_graph-G.json')
