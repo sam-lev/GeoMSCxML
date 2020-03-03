@@ -130,12 +130,12 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
     if trained_prefix is not None:
         mscgnn.classify(embedding_prefix=embedding_name,MSCGNN_infer=inference_mscgnn,
                          aggregator=aggregator, embedding_path_name=embedding_path_name
-                        ,trained_prefix=trained_prefix)
+                        ,trained_prefix=trained_prefix, learning_rate=learning_rate)
     else:
         # adjust classification to use mscgnn for inference with known
         # gnn and get new inference mscgnn embedding.
         mscgnn.classify(MSCGNN_infer=inference_mscgnn, MSCGNN=mscgnn, embedding_path_name=embedding_path_name
-                        , embedding_prefix=embedding_name, learning_rate=learning_rate)
+                        , embedding_prefix=embedding_name, learning_rate=learning_rate, aggregator=aggregator)
 
 
     # Hand select test graph
@@ -171,8 +171,8 @@ mscgnn.msc_feature_graph(image=np.transpose(np.mean(image, axis=1), (1, 0)), X=i
                          , validation_samples=1, validation_hops=20
                          , test_samples=1, test_hops=20, accuracy_threshold=0.1
                          , write_json_graph_path='./data', name=trained_msc_graph_name)
-aggregator = ['graphsage_maxpool', 'gcn', 'graphsage_seq','graphsage_maxpool'
-        , 'graphsage_meanpool','graphsage_seq', 'n2v'][4]
+
+aggregator = ['graphsage_maxpool', 'gcn', 'graphsage_seq','graphsage_maxpool', 'graphsage_meanpool','graphsage_seq', 'n2v'][4]
 learning_rate = 0.25
 
 GeoMSC_Inference(inference_msc=inference_msc

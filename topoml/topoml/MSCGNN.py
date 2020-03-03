@@ -409,7 +409,7 @@ class MSCGNN:
 
     """Perform classification using learned graph representation from GNN"""
     def classify(self, MSCGNN_infer = None, test_prefix = None,  trained_prefix=None
-                 , embedding_prefix=None, embedding_path_name=None, aggregator='graphsage_mean'
+                 , embedding_prefix=None, embedding_path_name=None, aggregator=None
                  , learning_rate = None, MSCGNN = None):
         cwd = './'
         #embedding_path =  os.path.join(cwd,'log-dir',embedding_prefix+'-unsup-json_graphs','graphsage_mean_small_'+'0.100000')
