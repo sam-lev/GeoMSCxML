@@ -104,7 +104,7 @@ class LinearRegression:
         from sklearn.multioutput import MultiOutputClassifier
         dummy = MultiOutputClassifier(DummyClassifier())
         dummy.fit(train_embeds, train_labels)
-        log = MultiOutputClassifier(LogisticRegression(multi_class='multinomial'), n_jobs=2)
+        log = MultiOutputClassifier(LogisticRegression(solver='saga', multi_class='multinomial'), n_jobs=2)
 
         log.fit(train_embeds, train_labels)
         prediction = log.predict(test_embeds)
@@ -129,7 +129,7 @@ class LinearRegression:
                 for id, arc in zip(test_ids, self.mscgnn_infer.arcs):
                     pred = log.predict_proba(embeds[[id_map[id]]])#[0]
                     print("pred", pred)
-                    arc.label_accuracy =  float(max(pred))#[0])#[int(pred[0]),int(pred[1])]
+                    arc.label_accuracy =  float(pred[1])#[0])#[int(pred[0]),int(pred[1])]
 
             pred_path = os.path.join(self.embedding_path.split("/")[:-1][0], self.embedding_path.split("/")[:-1][1],self.embedding_path.split("/")[:-1][2],'predicted_graph-G.json')
             
