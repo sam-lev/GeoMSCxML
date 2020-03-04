@@ -538,7 +538,8 @@ class MSCSample():
     def msc_subgraph_splits(self, validation_samples, validation_hops
                                     , test_samples, test_hops
                                     , X, Y
-                                    , accuracy_threshold=0.1,  msc=None):
+                                    , accuracy_threshold=0.1,  msc=None
+                                    ,test_graph=False):
         if msc is not None:
             self.assign_msc(msc)
 
@@ -576,11 +577,11 @@ class MSCSample():
                                             , rings=test_hops
                                             , accuracy_threshold=accuracy_threshold, seed=666
                                             , test=True)
+            all_test = self.test_set_ids["positive"].union(self.test_set_ids["negative"])
 
         print("subgraph split complete")
 
         #val_and_test = self.validation_set["positive"].union(self.validation_set["negative"]).union(self.test_set["positive"]).union(self.test_set["negative"])
-        all_test = self.test_set_ids["positive"].union(self.test_set_ids["negative"])
         all_validation = self.validation_set_ids["positive"].union(self.validation_set_ids["negative"])
 
         node_map = {}
@@ -628,7 +629,7 @@ class MSCSample():
                         node["train"] = False
                         node["test"] = False
                         node["val"] = True
-                    elif index in all_test:
+                    elif (test_samples != 0 and test_hops != 0) and index in all_test:
                         node["test"] = True
                         node["val"] = False
                         node["train"] = False
@@ -636,6 +637,11 @@ class MSCSample():
                         modified = 1
                         node["train"] = True
                         node["test"] = False
+                        node["val"] = False
+                    if test_graph:
+                        modified = 1
+                        node["train"] = False
+                        node["test"] = True
                         node["val"] = False
 
                 """Label all non-selected arcs as test"""

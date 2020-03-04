@@ -59,9 +59,10 @@ class MSCGNN:
         self.nodes = msc.nodes
 
     def msc_feature_graph(self,  image
-                  , validation_samples, validation_hops, test_samples, test_hops
-                  , accuracy_threshold
-                  ,msc=None, load=False, X=None, Y=None, write_json_graph_path=False, name=None):
+                            , validation_samples, validation_hops, test_samples, test_hops
+                            , accuracy_threshold
+                            ,msc=None, load=False, X=None, Y=None, write_json_graph_path=False, name=None
+                            ,test_graph=False):
         if load:
             msc = GeoMSC()
             msc = msc.read_from_file(fname_base=load, labeled=True)
@@ -78,7 +79,8 @@ class MSCGNN:
         self.node_id,\
         self.node_classes,\
         self.features = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples, validation_hops=validation_hops
-                                            , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold)
+                                            , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold
+                                                ,test_graph=test_graph)
         self.positive_arcs = msc.positive_arcs
         self.negative_arcs = msc.negative_arcs
         self.msc = msc

@@ -129,9 +129,10 @@ def learn_embedding():
     # add number id to name
     msc_graph_name = 'msc-feature-graph-' + str(persistence_values[pers]) + 'blur-' + str(blur)
     mscgnn.msc_feature_graph(image=np.transpose(np.mean(image,axis=1),(1,0)), X=image.shape[0], Y=image.shape[2]
-                     ,validation_samples=2, validation_hops=20
-                     , test_samples=0, test_hops=0, accuracy_threshold=0.1
-                     ,write_json_graph_path='./data', name=msc_graph_name)
+                                ,validation_samples=2, validation_hops=20
+                                , test_samples=0, test_hops=0, accuracy_threshold=0.1
+                                ,write_json_graph_path='./data', name=msc_graph_name
+                                ,test_graph=False)
 
     print(" %%%%% feature graph complete")
 
