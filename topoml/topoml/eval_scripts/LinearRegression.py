@@ -127,7 +127,7 @@ class LinearRegression:
                 test_graph.node[id]["prediction"] = [int(pred[0]),int(pred[1])]
             if self.mscgnn_infer is not None:
                 for id, arc in zip(test_ids, self.mscgnn_infer.arcs):
-                    pred = log.predict_proba(embeds[[id_map[id]]])#[0]
+                    pred = log.predict_proba(embeds[[id_map[id]]])[0]
                     print("pred", pred)
                     arc.label_accuracy =  float(pred[1])#[0])#[int(pred[0]),int(pred[1])]
 
