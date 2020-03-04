@@ -123,13 +123,13 @@ class LinearRegression:
 
             predictions = {}
             for id in test_ids:
-                pred =log.predict(embeds[[id_map[id]]])[1]
+                pred =log.predict(embeds[[id_map[id]]])[0]
                 test_graph.node[id]["prediction"] = [int(pred[0]),int(pred[1])]
             if self.mscgnn_infer is not None:
                 for id, arc in zip(test_ids, self.mscgnn_infer.arcs):
-                    pred = log.predict_proba(embeds[[id_map[id]]])[1]
+                    pred = log.predict_proba(embeds[[id_map[id]]])[0]
                     print("pred", pred)
-                    arc.label_accuracy =  float(pred[1])#[0])#[int(pred[0]),int(pred[1])]
+                    arc.label_accuracy =  float(pred[1][1])#[0])#[int(pred[0]),int(pred[1])]
 
             pred_path = os.path.join(self.embedding_path.split("/")[:-1][0], self.embedding_path.split("/")[:-1][1],self.embedding_path.split("/")[:-1][2],'predicted_graph-G.json')
             
