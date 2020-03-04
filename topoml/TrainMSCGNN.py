@@ -111,7 +111,7 @@ retina_dataset = list(zip(drive_training_images + drive_test_images + stare_imag
 retina_dataset = drive_training_dataset
 MSCRetinaDataSet.retina_array = retina_dataset
 #MSCRetinaDataSet.get_retina_array(partial=False, msc=True)
-train_dataloader = MSCRetinaDataset(retina_dataset, split=None, do_transform = False, with_hand_seg=True)
+train_dataloader = MSCRetinaDataset(retina_dataset, split=None, shuffle=False, do_transform = False, with_hand_seg=True)
 val_dataloader = MSCRetinaDataset(retina_dataset, split = "val", do_transform = False, with_hand_seg=True)
 test_dataloader = MSCRetinaDataset(retina_dataset, split = "test", do_transform = False, with_hand_seg=True)
 print(" %%% data buffer split complete")

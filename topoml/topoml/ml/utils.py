@@ -21,10 +21,11 @@ def gaussian_fit(image, plot=False):
 #this is the function that splits a dataset into training, validation and testing set
 #We are using a split of 70%-10%-20%, for train-val-test, respectively
 #this function is used internally to the defined dataset classes
-def get_split(array_to_split, split):
-    np.random.seed(0)
-    np.random.shuffle(array_to_split)
-    np.random.seed()
+def get_split(array_to_split, split, shuffle=True):
+    if shuffle:
+        np.random.seed(0)
+        np.random.shuffle(array_to_split)
+        np.random.seed()
     if split == 'train':
         array_to_split = array_to_split[:int(len(array_to_split)*0.7)]
     elif split == 'val':

@@ -41,11 +41,11 @@ class MSCRetinaDataset(MSCLearningDataSet):#Dataset):
                   np.transpose(x[3], [2, 0, 1]))
         return x2
 
-    def __init__(self, retina_array=None, split='train', do_transform=False, with_hand_seg=False):
+    def __init__(self, retina_array=None, split='train', do_transform=False, with_hand_seg=False, shuffle=True):
         super(MSCRetinaDataset, self).__init__()
         self.with_hand_seg = with_hand_seg
         if retina_array is not None:
-            indexes_this_split = get_split(np.arange(len(retina_array), dtype=np.int), split)
+            indexes_this_split = get_split(np.arange(len(retina_array), dtype=np.int), split, shuffle=shuffle)
             self.retina_array = [self.transpose_first_index(retina_array[i], self.with_hand_seg) for i in
                                  indexes_this_split]
         self.split = split
