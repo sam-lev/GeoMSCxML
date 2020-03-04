@@ -156,7 +156,7 @@ class unsupervised:
                 conversion = lambda n: int(n)
             else:
                 conversion = lambda n: n
-            with open('./data/random_walks/' + load_walks + "-walks.txt") as fp:
+            with open( load_walks + "-walks.txt") as fp:
                 for line in fp:
                     walks.append(map(conversion, line.split()))
         train_data[3] = walks
