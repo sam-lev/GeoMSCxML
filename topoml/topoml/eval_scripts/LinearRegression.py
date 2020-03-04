@@ -129,9 +129,9 @@ class LinearRegression:
                 for id, arc in zip(test_ids, self.mscgnn_infer.arcs):
                     pred = log.predict_proba(embeds[[id_map[id]]])
                     print("pred : ", pred)
-                    pred = pred[0]
+                    pred = pred[1]
                     print("pred0", pred)
-                    arc.label_accuracy =  float(pred[1])#[0])#[int(pred[0]),int(pred[1])]
+                    arc.label_accuracy =  float(pred[0][1])#[0])#[int(pred[0]),int(pred[1])]
 
             pred_path = os.path.join(self.embedding_path.split("/")[:-1][0], self.embedding_path.split("/")[:-1][1],self.embedding_path.split("/")[:-1][2],'predicted_graph-G.json')
             
