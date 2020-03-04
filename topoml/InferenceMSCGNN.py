@@ -36,8 +36,9 @@ if collect_datasets:
     # get each set independently for msc computation
     drive_training_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False
                                                                     , drive_training_only=True, env=args.env)
-    drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True, env=args.env)
-    drive_test_dataset = MSCRetinaDataset(drive_test_retina_array, split=None, do_transform=False, with_hand_seg=True)
+    #drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True, env=args.env)
+    #drive_test_dataset = MSCRetinaDataset(drive_test_retina_array, split=None, do_transform=False, with_hand_seg=True)
+
     ##stare_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, stare_only=True, env=args.env)
 
     # dataset buffers to use for training:
@@ -61,9 +62,9 @@ if compute_msc:
                                                                    , valley=True, ridge=True
                                                                    ,env=args.env)
 
-    drive_test_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
-                                          , data_buffer=drive_test_dataset, data_path = LocalSetup.drive_test_path, segmentation_path=LocalSetup.drive_test_segmentation_path
-                                                      ,write_path = LocalSetup.drive_test_base_path, label=True, save=False, valley=True, ridge=True, env=args.env)
+    #drive_test_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
+    #                                      , data_buffer=drive_test_dataset, data_path = LocalSetup.drive_test_path, segmentation_path=LocalSetup.drive_test_segmentation_path
+    #                                                  ,write_path = LocalSetup.drive_test_base_path, label=True, save=False, valley=True, ridge=True, env=args.env)
     """stare_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
                                           ,data_buffer=stare_dataset, data_path = LocalSetup.stare_training_data_path, segmentation_path=LocalSetup.stare_segmentations
                                                       ,write_path = LocalSetup.stare_base_path, label=True, save=True, valley=True, ridge=True)"""
@@ -73,7 +74,7 @@ if compute_msc:
 print(" %%% performing data buffer train, validation, test split ")
 drive_training_images, drive_training_msc_collections, drive_training_masks, drive_training_segmentations = list(
     zip(*drive_training_dataset))
-drive_test_images, drive_test_msc_collections, drive_test_masks, drive_test_segmentations = list(zip(*drive_test_dataset))
+##drive_test_images, drive_test_msc_collections, drive_test_masks, drive_test_segmentations = list(zip(*drive_test_dataset))
 """stare_images, stare_msc_collections, stare_masks, stare_segmentations = list(zip(*stare_dataset))
 retina_dataset = list(zip(drive_training_images + drive_test_images + stare_images
                           ,drive_training_msc_collections + drive_test_msc_collections + stare_msc_collections
@@ -87,20 +88,7 @@ retina_dataset = list(zip(drive_training_images + drive_test_images + stare_imag
 ##                  split data into train , validation and test sets. Each MSC is also subgraph
 ##                  into validation test and training. Embeddings are iteratively learned across msc.
 ##
-""" temp """
-retina_dataset = drive_test_dataset
-MSCRetinaDataSet.retina_array = retina_dataset
-#MSCRetinaDataSet.get_retina_array(partial=False, msc=True)
-train_dataloader = MSCRetinaDataset(retina_dataset, split="train", do_transform = False, with_hand_seg=True)
-val_dataloader = MSCRetinaDataset(retina_dataset, split = "val", do_transform = False, with_hand_seg=True)
-test_dataloader = MSCRetinaDataset(retina_dataset, split = "test", do_transform = False, with_hand_seg=True)
 
-
-print(" %%% data buffer split complete")
-
-inference_image, msc, mask, segmentation = train_dataloader[0]
-inference_msc_graph_name = 'inference_msc-feature-graph-' + str(persistence_values[pers]) + 'blur-' + str(blur)
-inference_msc = msc[(persistence_values[pers], blur_sigmas[blur])]
 
 def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                      embedding_name, learning_rate, aggregator
@@ -160,16 +148,27 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
     # with appropriate name of train graph, e.g. looks for graph in log-dir
     ###mscgnn.show_gnn_classification(pred_graph_prefix=train_group_name, train_view=True)
 
-retina_dataset_train = drive_training_dataset
-MSCRetinaDataSet.retina_array = retina_dataset_train
-#MSCRetinaDataSet.get_retina_array(partial=False, msc=True)
-train_dataloader_trained = MSCRetinaDataset(retina_dataset_train, split="train", do_transform = False, with_hand_seg=True)
-val_dataloader_trained = MSCRetinaDataset(retina_dataset_train, split = "val", do_transform = False, with_hand_seg=True)
-test_dataloader_trained = MSCRetinaDataset(retina_dataset_train, split = "test", do_transform = False, with_hand_seg=True)
+""" temp """
+
+MSCRetinaDataSet.retina_array = drive_training_dataset
+MSCRetinaDataSet.get_retina_array(partial=False, msc=True)
+train_dataloader = MSCRetinaDataset(drive_training_dataset, split=None,shuffle=False, do_transform = False, with_hand_seg=True)
+##val_dataloader = MSCRetinaDataset(retina_dataset, split = "val", do_transform = False, with_hand_seg=True)
+##test_dataloader = MSCRetinaDataset(retina_dataset, split = "test", do_transform = False, with_hand_seg=True)
+
+
+print(" %%% data buffer split complete")
+
+inference_image, msc, mask, segmentation = train_dataloader[1]
+inference_msc_graph_name = 'inference_msc-feature-graph-' + str(persistence_values[pers]) + 'blur-' + str(blur)
+inference_msc = msc[(persistence_values[pers], blur_sigmas[blur])]
+
+
 pers = 0
 blur = 0
 image, msc, mask, segmentation = train_dataloader[0]
 msc = msc[(persistence_values[pers], blur_sigmas[blur])]
+
 mscgnn = MSCGNN(msc=msc)
 
 trained_msc_graph_name =  'msc-feature-graph-' + str(persistence_values[pers]) + 'blur-' + str(blur)
