@@ -101,8 +101,7 @@ print(" %%% data buffer split complete")
 inference_image, msc, mask, segmentation = train_dataloader[0]
 inference_msc_graph_name = 'inference_msc-feature-graph-' + str(persistence_values[pers]) + 'blur-' + str(blur)
 inference_msc = msc[(persistence_values[pers], blur_sigmas[blur])]
-print("INFERENCE IMAGE SHAPE >>>>>>")
-print(inference_image.shape)
+
 def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                      embedding_name, learning_rate, aggregator
                      , persistence, blur, trained_prefix=None, gpu=0, env=None):
@@ -155,7 +154,7 @@ def GeoMSC_Inference(mscgnn, inference_msc, inference_image,
                                     ,X=inference_image.shape[0],Y=inference_image.shape[2]
                                     ,reshape_out=False ,dpi = 50
                                     , valley=True, ridge=True)
-    mscgnn.show_gnn_classification(pred_graph_prefix=embedding_name, train_view=False)  # embedding_name)
+    ##mscgnn.show_gnn_classification(pred_graph_prefix=embedding_name, train_view=False)  # embedding_name)
 
     # see train and val sets, must put in directory log-dir and make new folder
     # with appropriate name of train graph, e.g. looks for graph in log-dir
