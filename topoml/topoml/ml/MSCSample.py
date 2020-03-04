@@ -571,11 +571,11 @@ class MSCSample():
                                         , rings=validation_hops
                                         , accuracy_threshold=accuracy_threshold, seed=123
                                         , validation=True)
-
-        self.sample_graph_neighborhoods(X, Y, count=test_samples
-                                        , rings=test_hops
-                                        , accuracy_threshold=accuracy_threshold, seed=666
-                                        , test=True)
+        if test_samples != 0 and test_hops != 0:
+            self.sample_graph_neighborhoods(X, Y, count=test_samples
+                                            , rings=test_hops
+                                            , accuracy_threshold=accuracy_threshold, seed=666
+                                            , test=True)
 
         print("subgraph split complete")
 
