@@ -159,7 +159,7 @@ class unsupervised:
             with open( load_walks + "-walks.txt") as fp:
                 for line in fp:
                     walks.append(map(conversion, line.split()))
-        train_data[3] = (train_data[0], train_data[1], train_data[2], walks, train_data[4], train_data[5], train_data[6])
+        train_data = (train_data[0], train_data[1], train_data[2], walks, train_data[4], train_data[5], train_data[6])
 
         tf.app.flags.DEFINE_boolean('log_device_placement', False,
                                     """Whether to log device placement.""")
