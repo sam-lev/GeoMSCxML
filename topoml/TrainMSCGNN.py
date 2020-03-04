@@ -152,7 +152,7 @@ def learn_embedding():
                                        ,str(persistence_values[0])+str(blur_sigmas[0]) +'test_walk')
     random_walk_embedding(mscgnn.G, walk_length=10, number_walks=20, out_file=walk_embedding_file)
 
-    mscgnn.unsupervised(aggregator=aggregator, slurm=args.env)
+    mscgnn.unsupervised(aggregator=aggregator, env=args.env)
 
     # hyper-param for gnn
     learning_rate = .25

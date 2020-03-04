@@ -285,8 +285,8 @@ class MSCGNN:
             print('graph family written in & w/ prefix ', graph_file_path+'/'+group_name, '(',f-s,')')
 
 
-    def unsupervised(self, aggregator = None, slurm = False):
-        self.gnn = unsupervised_gnn(aggregator = aggregator, slurm = slurm)
+    def unsupervised(self, aggregator = None, env = False):
+        self.gnn = unsupervised_gnn(aggregator = aggregator, env = env)
     """Train the GNN on dual of msc with arc features in nodes"""
     
     def train(self,generate_embedding=False, graph = None, features = None, node_id = None, node_classes = None,
