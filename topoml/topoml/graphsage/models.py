@@ -3,7 +3,8 @@ from collections import namedtuple
 import tensorflow as tf
 import math
 
-#import .layers as layers
+import topoml.graphsage.layers as layers
+import topoml.graphsage.metrics as metrics
 from .layers import *
 from .metrics import *
 
@@ -142,7 +143,7 @@ class MLP(Model):
                          logging=self.logging)
         return l
 
-    def _add_transition(in_dim, out_dim):
+    def _add_transition(self, in_dim, out_dim):
         l = layers.Dense(input_dim=in_dim,
                          output_dim=out_dim,
                          act=lambda x: x,
@@ -405,6 +406,7 @@ class SampleAndAggregate(GeneralizedModel):
         self._loss()
         self._accuracy()
         self.loss = self.loss / tf.cast(self.batch_size, tf.float32)
+        #self.loss = tf.divide(self.loss, tf.cast(self.batch_size, tf.float32), name="loss" )
         grads_and_vars = self.optimizer.compute_gradients(self.loss)
         clipped_grads_and_vars = [(tf.clip_by_value(grad, -5.0, 5.0) if grad is not None else None, var) 
                 for grad, var in grads_and_vars]

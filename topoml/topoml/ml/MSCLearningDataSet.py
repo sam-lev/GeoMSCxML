@@ -41,7 +41,8 @@ class MSCRetinaDataset(MSCLearningDataSet):#Dataset):
                   np.transpose(x[3], [2, 0, 1]))
         return x2
 
-    def __init__(self, retina_array=None, split='train', do_transform=False, with_hand_seg=False, shuffle=True):
+    def __init__(self, retina_array=None, split='train', do_transform=False
+                 , with_hand_seg=False, shuffle=True):
         super(MSCRetinaDataset, self).__init__()
         self.with_hand_seg = with_hand_seg
         if retina_array is not None:
@@ -148,7 +149,7 @@ class MSCRetinaDataset(MSCLearningDataSet):#Dataset):
 
     def get_retina_array(self, partial=False, use_local_setup=True, msc=True
                          , stare_only=False, drive_training_only=False, drive_test_only=False
-                         ,persistence_values=[], env='multivax'):
+                         ,persistence_values=[], env='multivax', number_images=None):
 
         if use_local_setup:
             self.LocalSetup = LocalSetup(env)
@@ -241,30 +242,59 @@ class MSCRetinaDataset(MSCLearningDataSet):#Dataset):
                 total_msc_segmentation = stare_segmentation + drive_training_segmentations
 
         if drive_training_only:
-            self.retina_array = list(zip(drive_training_images,
-                                         total_msc_segmentation,
-                                         drive_training_mask,
-                                         drive_training_segmentations))
+            if number_images is None:
+                self.retina_array = list(zip(drive_training_images,
+                                             total_msc_segmentation,
+                                             drive_training_mask,
+                                             drive_training_segmentations))
+            else:
+                self.retina_array = list(zip(drive_training_images[:number_images],
+                                             total_msc_segmentation[:number_images],
+                                             drive_training_mask[:number_images],
+                                             drive_training_segmentations[:number_images]))
             return self.retina_array
         if drive_test_only:
-            self.retina_array = list(zip(drive_test_images,
-                                         drive_test_segmentation,
-                                         drive_test_mask,
-                                         drive_test_segmentation))
+            if number_images is None:
+                self.retina_array = list(zip(drive_test_images,
+                                             drive_test_segmentation,
+                                             drive_test_mask,
+                                             drive_test_segmentation))
+            else:
+                self.retina_array = list(zip(drive_test_images[:number_images],
+                                             drive_test_segmentation[:number_images],
+                                             drive_test_mask[:number_images],
+                                             drive_test_segmentation[:number_images]))
             return self.retina_array
         if stare_only:
-            self.retina_array = list(zip(stare_images,
-                                         total_msc_segmentation,
-                                         stare_mask,
-                                         stare_segmentation))
+            if number_images is None:
+                self.retina_array = list(zip(stare_images,
+                                             total_msc_segmentation,
+                                             stare_mask,
+                                             stare_segmentation))
+            else:
+                self.retina_array = list(zip(stare_images[:number_images],
+                                             total_msc_segmentation[:number_images],
+                                             stare_mask[:number_images],
+                                             stare_segmentation[:number_images]))
             return self.retina_array
         if partial:
-            self.retina_array = list(zip(stare_images + drive_training_images + drive_test_images,
-                            total_msc_segmentation + drive_test_segmentation,
-                            stare_mask + drive_training_mask + drive_test_mask))
+            if number_images is None:
+                self.retina_array = list(zip(stare_images + drive_training_images + drive_test_images,
+                                total_msc_segmentation + drive_test_segmentation,
+                                stare_mask + drive_training_mask + drive_test_mask))
+            else:
+                self.retina_array = list(zip(stare_images[:number_images] + drive_training_images[:number_images] + drive_test_images[:number_images],
+                                             total_msc_segmentation[:number_images] + drive_test_segmentation[:number_images],
+                                             stare_mask[:number_images] + drive_training_mask[:number_images] + drive_test_mask[:number_images]))
         else:
-            self.retina_array = list(zip(stare_images + drive_training_images + drive_test_images,
-                            total_msc_segmentation + drive_test_segmentation,
-                            stare_mask + drive_training_mask + drive_test_mask,
-                            stare_segmentation + drive_training_segmentations + drive_test_segmentation))
+            if number_images is None:
+                self.retina_array = list(zip(stare_images + drive_training_images + drive_test_images,
+                                total_msc_segmentation + drive_test_segmentation,
+                                stare_mask + drive_training_mask + drive_test_mask,
+                                stare_segmentation + drive_training_segmentations + drive_test_segmentation))
+            else:
+                self.retina_array = list(zip(stare_images[:number_images] + drive_training_images[:number_images] + drive_test_images[:number_images],
+                                             total_msc_segmentation[:number_images] + drive_test_segmentation[:number_images],
+                                             stare_mask[:number_images] + drive_training_mask[:number_images] + drive_test_mask[:number_images],
+                                             stare_segmentation[:number_images] + drive_training_segmentations[:number_images] + drive_test_segmentation[:number_images]))
         return self.retina_array

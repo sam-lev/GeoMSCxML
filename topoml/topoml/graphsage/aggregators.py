@@ -137,9 +137,9 @@ class MaxPoolingAggregator(Layer):
             name = ''
 
         if model_size == "small":
-            hidden_dim = self.hidden_dim = 512
+            hidden_dim = self.hidden_dim = 512//2
         elif model_size == "big":
-            hidden_dim = self.hidden_dim = 1024
+            hidden_dim = self.hidden_dim = 1024//2
 
         self.mlp_layers = []
         self.mlp_layers.append(Dense(input_dim=neigh_input_dim,
@@ -215,9 +215,9 @@ class MeanPoolingAggregator(Layer):
             name = ''
 
         if model_size == "small":
-            hidden_dim = self.hidden_dim = 512
+            hidden_dim = self.hidden_dim = 512//2
         elif model_size == "big":
-            hidden_dim = self.hidden_dim = 1024
+            hidden_dim = self.hidden_dim = 1024//2
 
         self.mlp_layers = []
         self.mlp_layers.append(Dense(input_dim=neigh_input_dim,
@@ -294,11 +294,11 @@ class TwoMaxLayerPoolingAggregator(Layer):
             name = ''
 
         if model_size == "small":
-            hidden_dim_1 = self.hidden_dim_1 = 512
-            hidden_dim_2 = self.hidden_dim_2 = 256
+            hidden_dim_1 = self.hidden_dim_1 = 512//2
+            hidden_dim_2 = self.hidden_dim_2 = 256//2
         elif model_size == "big":
-            hidden_dim_1 = self.hidden_dim_1 = 1024
-            hidden_dim_2 = self.hidden_dim_2 = 512
+            hidden_dim_1 = self.hidden_dim_1 = 1024//2
+            hidden_dim_2 = self.hidden_dim_2 = 512//2
 
         self.mlp_layers = []
         self.mlp_layers.append(Dense(input_dim=neigh_input_dim,

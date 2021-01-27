@@ -9,10 +9,9 @@ import json
 from networkx.readwrite import json_graph
 import networkx as nx
 
-
-
-#from topoml.graphsage import gnn
-from topoml.graphsage.gnn import unsupervised as unsupervised_gnn
+from topoml.graphsage import gnn
+#from topoml.graphsage.gnn import unsupervised as unsupervised_gnn
+#from topoml.graphsage.gnn import supervised as supervised_gnn
 from topoml.eval_scripts import LinearRegression
 
 # import class for labeling MSC from supervised segmentation
@@ -20,6 +19,7 @@ from topoml.eval_scripts import LinearRegression
 
 # GNN imports (local)
 from topoml.graphsage.utils import format_data
+from topoml.graphsage.utils import load_data
 
 # Local application imports
 """ ! need to call tracer with param passed giving user option 
@@ -36,9 +36,10 @@ from topoml.ui.LocalSetup import LocalSetup
 from topoml.graphsage.utils import random_walk_embedding
 
 class MSCGNN:
-    def __init__(self, msc=None, geomsc=None, G=None, gnn=None, select=False):
+    def __init__(self, msc=None, geomsc=None, msc_collection=None, G=None, gnn=None, select=False):
         self.msc = msc if msc is not None else geomsc
         self.geomsc = geomsc if geomsc is not None else msc
+        self.msc_collection = msc_collection if msc_collection is not None else {}
         self.G = G
         self.select = select
         self.positive_arcs = None
@@ -58,14 +59,28 @@ class MSCGNN:
         self.arc_map = msc.arc_map
         self.nodes = msc.nodes
 
-    def msc_feature_graph(self,  image
-                            , validation_samples, validation_hops, test_samples, test_hops
-                            , accuracy_threshold
-                            ,msc=None, load=False, X=None, Y=None, write_json_graph_path=False, name=None
-                            ,test_graph=False):
-        if load:
+    def msc_feature_graph(self,  image=None
+                            ,  test_samples=None, test_hops=None
+                            , accuracy_threshold=0.2
+                            ,msc=None, load_msc=False, X=None, Y=None
+                          , write_json_graph_path='', name=''
+                            ,test_graph=False, load_preprocessed=False
+                          ,persistence_values=[], blur=0
+                          ,validation_samples=0, validation_hops=0
+                          ,multiclass=False
+                          , val_model='cvt', sigmoid=False, min_number_features=1, number_features=5):
+        if load_msc:
             msc = GeoMSC()
-            msc = msc.read_from_file(fname_base=load, labeled=True)
+            self.msc = msc.read_from_file(fname_base=load_msc, labeled=True)
+            self.arc_dict = msc.arc_dict
+        if load_preprocessed:
+            prefix = os.path.join(write_json_graph_path,'json_graphs',name)
+            print("Using pre-computed graph data from:")
+            print(prefix)
+            self.G, self.features, self.node_id, self.walks, self.node_classes\
+                , negative_sample_count\
+                , positive_sample_count = load_data(prefix=prefix)
+            msc = GeoMSC()
         if msc is not None:
             self.msc = self.assign_msc(msc)
         if X is None:
@@ -74,20 +89,47 @@ class MSCGNN:
 
         print("%% computing subgraph train, val, test split")
 
-        msc = MSCSample(msc=self.msc, image=image)
-        self.G,\
-        self.node_id,\
-        self.node_classes,\
-        self.features = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples, validation_hops=validation_hops
-                                            , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold
-                                                ,test_graph=test_graph)
-        self.positive_arcs = msc.positive_arcs
-        self.negative_arcs = msc.negative_arcs
+        #problem
+        msc = MSCSample(msc=self.msc, msc_collection=self.msc_collection, image=image)
+
+        if load_preprocessed:
+            msc.features = self.features
+            #msc.sort_labeled_arcs(accuracy_threshold=accuracy_threshold)
+        else:
+            if val_model=='cvt':
+                self.G,\
+                self.node_id,\
+                self.node_classes,\
+                self.features = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples, validation_hops=validation_hops
+                                                    , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold
+                                                    , multiclass=multiclass ,test_graph=test_graph, sigmoid=sigmoid, min_number_features=min_number_features, number_features=number_features)
+            elif val_model=='inference':
+                self.G,\
+                self.node_id,\
+                self.node_classes,\
+                self.features = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples, validation_hops=validation_hops
+                                                    , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold
+                                                        ,test_graph=test_graph, min_number_features=min_number_features, number_features=number_features)
+            else:
+                self.G, \
+                self.node_id, \
+                self.node_classes, \
+                self.features = msc.msc_persistence_subgraph_split(X=X, Y=Y, persistence_values=persistence_values
+                                                                   ,blur=blur
+                                                            , test_samples=test_samples, test_hops=test_hops,
+                                                            accuracy_threshold=accuracy_threshold
+                                                            , test_graph=test_graph
+                                                                   ,number_features=number_features)
+
+            self.positive_arcs = msc.positive_arcs
+            self.negative_arcs = msc.negative_arcs
         self.msc = msc
+        #self.number_features = msc.number_features
+
 
         print("% subgraph split complete ")
 
-        if write_json_graph_path:
+        if write_json_graph_path and not load_preprocessed:
 
             print('.writing graph family data')
             s = time()
@@ -285,14 +327,25 @@ class MSCGNN:
             print('graph family written in & w/ prefix ', graph_file_path+'/'+group_name, '(',f-s,')')
 
 
-    def unsupervised(self, aggregator = None, env = False):
-        self.gnn = unsupervised_gnn(aggregator = aggregator, env = env)
+    def unsupervised(self, aggregator = None, env = False, model_path=None):
+        self.unsup = True
+        self.sup = False
+        self.gnn = gnn.unsupervised(aggregator = aggregator, env = env)#, model_path=model_path)
+
+    def supervised(self, aggregator = None, env = False, msc_collection=None, model_path=None):
+        self.sup = True
+        self.unsup = False
+        self.gnn = gnn.supervised(aggregator = aggregator, env = env,msc_collection=msc_collection, model_path=model_path)
     """Train the GNN on dual of msc with arc features in nodes"""
     
     def train(self,generate_embedding=False, graph = None, features = None, node_id = None, node_classes = None,
               normalize = True, train_prefix = '',  embedding_name = '', load_walks=False,
-              num_neg = None, learning_rate=None, epochs=200, weight_decay=0.01,
-              polarity=6, depth=3, gpu=0, use_embedding=None, env=None):
+              num_neg = None, learning_rate=None, epochs=200, batch_size=512, weight_decay=0.01,
+              max_degree=None, degree_l1=None, degree_l2=None, degree_l3=None, total_features = 1,
+              polarity=6, depth=2, gpu=0, use_embedding=None, val_model='cvt', sigmoid=False, env=None
+              ,model_size = 'small'
+                            ,out_dim_1 = 256
+                            , out_dim_2 = 256):
         """
         ### trains on --train_prefix (adds -G.json to param passed when searching for file)
         ### uses --model aggregator for training
@@ -317,26 +370,61 @@ class MSCGNN:
                                                         ,train_or_test = ''
                                                         ,scheme_required = True
                                                         ,load_walks=load_walks)
-            
-            self.gnn.train( G=G,
-                            learning_rate = learning_rate,
-                            load_walks=load_walks,
-                            number_negative_samples = len(self.negative_arcs),
-                            number_positive_samples = number_positive_samples,
-                            feats = feats,
-                            id_map=self.id_map,
-                            class_map=class_map,
-                            embedding_file_out = embedding_name,
-                            epochs=epochs,
-                            weight_decay = weight_decay,
-                            polarity=polarity,
-                            depth=depth,
-                            gpu=gpu,
-                            env=env,
-                            use_embedding=use_embedding)
+
+            if self.unsup:
+                self.gnn.train( G=G,
+                                learning_rate = learning_rate,
+                                load_walks=load_walks,
+                                number_negative_samples = 3,#len(self.negative_arcs),
+                                number_positive_samples = number_positive_samples,
+                                feats = feats,
+                                id_map=self.id_map,
+                                class_map=class_map,
+                                embedding_file_out = embedding_name,
+                                epochs=epochs,
+                                batch_size=batch_size,
+                                weight_decay = weight_decay,
+                                polarity=polarity,
+                                depth=depth,
+                                gpu=gpu,
+                                env=env,
+                                val_model=val_model,
+                                sigmoid=sigmoid,
+                                use_embedding=use_embedding
+                                , max_degree=max_degree, degree_l1=degree_l1, degree_l2=degree_l2,degree_l3=degree_l3
+                                ,model_size = model_size
+                                ,out_dim_1 = out_dim_1
+                                , out_dim_2 = out_dim_2
+                                ,total_features = total_features)
+            else:
+                self.gnn.train(G=G,
+                               learning_rate=learning_rate,
+                               load_walks=load_walks,
+                               number_negative_samples=3,  # len(self.negative_arcs),
+                               number_positive_samples=number_positive_samples,
+                               feats=feats,
+                               id_map=self.id_map,
+                               class_map=class_map,
+                               epochs=epochs,
+                               batch_size=batch_size,
+                               weight_decay=weight_decay,
+                               polarity=polarity,
+                               model_size=model_size,
+                               depth=depth,
+                               gpu=gpu,
+                               env=env,
+                               val_model=val_model,
+                               sigmoid=sigmoid,
+                               use_embedding=use_embedding
+                               , max_degree=max_degree, degree_l1=degree_l1, degree_l2=degree_l2
+                               , degree_l3=degree_l3
+                               ,dim_1=out_dim_1
+                               ,dim_2=out_dim_2)
 
 
-        
+
+
+
         if train_prefix:
             print("loading")
             cwd = './'
@@ -360,7 +448,50 @@ class MSCGNN:
                            polarity=polarity,
                            depth=depth,
                            gpu=gpu,
-                           env=env)
+                           val_model=val_model,
+                           env=env
+                           , max_degree=max_degree, degree_l1=degree_l1, degree_l2=degree_l2,degree_l3=degree_l3)
+
+    def predict(self, inf_MSC, generate_embedding=False, graph=None, features=None, node_id=None, node_classes=None,
+              normalize=True, train_prefix='', embedding_name='', model_path=None,load_walks=False,
+              num_neg=None, learning_rate=None, epochs=200, batch_size=512, weight_decay=0.01,
+              max_degree=None, degree_l1=None, degree_l2=None, degree_l3=None,
+              polarity=6, depth=3, gpu=0, use_embedding=None, val_model='cvt', env=None):
+        """
+        ### inf_MSC is unclassified msc object
+        ### a MSCGNN precomposed and unclassified.
+        ### parent mscgnn is assumed trained and inference is done using
+        ### model trained on inherited mscgnn
+        """
+
+
+
+        G, feats, id_map \
+            , walks, class_map \
+            , number_negative_samples \
+            , number_positive_samples = format_data(dual=inf_MSC.G
+                                                    , features=inf_MSC.features
+                                                    , node_id=inf_MSC.node_id
+                                                    , id_map=inf_MSC.node_id
+                                                    , node_classes=inf_MSC.node_classes
+                                                    , train_or_test=''
+                                                    , scheme_required=True
+                                                    , load_walks=load_walks)
+
+        data = (G,feats, id_map, walks, class_map)
+
+        self.gnn.infer = True
+        self.gnn.set_parameters( load_walks=load_walks,
+                       batch_size=batch_size, polarity=polarity, gpu=gpu
+                       , val_model=val_model , max_degree=max_degree
+                                 , degree_l1=degree_l1, degree_l2=degree_l2, degree_l3=degree_l3)
+        self.gnn.infer_graph(data, model_path=model_path)
+
+    def get_graph(self):
+        return self.gnn.get_graph()
+
+    def get_graph_prediction(self):
+        return self.gnn.get_graph_prediction()
 
     def embed_inference_msc(self, inference_mscgnn, embedding_name
                             , persistence=None, blur=None, inference_embedding_file=None
@@ -412,11 +543,11 @@ class MSCGNN:
     """Perform classification using learned graph representation from GNN"""
     def classify(self, MSCGNN_infer = None, test_prefix = None,  trained_prefix=None
                  , embedding_prefix=None, embedding_path_name=None, aggregator=None
-                 , learning_rate = None, MSCGNN = None):
+                 , learning_rate = None, MSCGNN = None, supervised=False, size='small'):
         cwd = './'
         #embedding_path =  os.path.join(cwd,'log-dir',embedding_prefix+'-unsup-json_graphs','graphsage_mean_small_'+'0.100000')
         if embedding_path_name is None and learning_rate is not None:
-            embedding_p = embedding_prefix+'-unsup-json_graphs'+'/'+aggregator+'_'+'big'
+            embedding_p = embedding_prefix+'-unsup-json_graphs'+'/'+aggregator+'_'+size if not supervised else embedding_prefix+'/'+aggregator+'_'+'small'
             embedding_p += ("_{lr:0.6f}").format(lr=learning_rate)
         else:
             embedding_p = embedding_path_name
@@ -431,22 +562,33 @@ class MSCGNN:
                                 , embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
             
         elif self.G:
-             G,feats,id_map, walks, class_map, number_negative_samples, number_positive_samples = format_data(dual=self.G, features=self.features, node_id=self.node_id, id_map=self.node_id, node_classes=self.node_classes, train_or_test = '', scheme_required = True, load_walks=False)
+             G,feats,id_map, walks\
+                 ,class_map, number_negative_samples, number_positive_samples = format_data(dual=self.G, features=self.features, node_id=self.node_id, id_map=self.node_id, node_classes=self.node_classes, train_or_test = '', scheme_required = True, load_walks=False)
              
              mscgnn_infer = LinearRegression(G=G,
                                   MSCGNN_infer=MSCGNN_infer,
                                 features = feats,
                                 labels=class_map,
-                                num_neg = len(self.negative_arcs),
+                                num_neg = 10,#len(self.negative_arcs),
                                 id_map = id_map,
                                 MSCGNN = self,
                                 embedding_path = os.path.join(cwd, 'log-dir',embedding_p)).run()
+             self.gnn.G = self.G
+
 
         if mscgnn_infer is not None:
             return mscgnn_infer
         
-        
-        #eval_scripts/test_eval.py json_graphs/left_train_thro json_graphs/right_test_thro log-dir/left_thro_rnd2-unsup-left_train_thro/graphsage_mean_small_0.000010 left_train right_test True test
+    def draw_segmentation(self, path_name,image, type=None):
+        geomsc=self.msc
+        geomsc.draw_segmentation(path_name=path_name,image=image,type=type)
+
+    def equate_graph(self, G):
+        self.G = G
+        self.geomsc=self.msc
+        if self.geomsc is not None:
+            self.geomsc = self.geomsc.equate_graph(G)
+        self.msc = self.geomsc
 
     def show_gnn_classification(self,pred_graph_prefix = None, msc=None, G=None, gs_G =None, msc_G = None, train_view = False):
         if pred_graph_prefix:

@@ -96,7 +96,8 @@ class LinearRegression:
         self.label_node_predictions =  True #args.label_node_predictions
         self.setting = setting             #args.setting
         
-    def run_regression(self, train_embeds=None, train_labels=None, test_embeds=None, test_labels=None, test_ids = None, test_graph = None, embeds=None, id_map=None):
+    def run_regression(self, train_embeds=None, train_labels=None, test_embeds=None, test_labels=None
+                       , test_ids = None, test_graph = None, embeds=None, id_map=None):
         np.random.seed(1)
         from sklearn.linear_model import LogisticRegression #SGDClassifier
         from sklearn.dummy import DummyClassifier
@@ -114,42 +115,51 @@ class LinearRegression:
         for i in range(test_labels.shape[1]):
             print("Random baseline F1 score", f1_score(test_labels[:,i], dummy.predict(test_embeds)[:,i], average="micro"))
 
-        if test_graph:
+        #if test_graph:
             
-            #for id, pred in zip(test_ids, prediction.tolist()):
-            #for i in test_ids:    
-            #    test_graph.node[i]["prediction"] = prediction[i,:]
-                #print( test_graph.node[id])
+        #for id, pred in zip(test_ids, prediction.tolist()):
+        #for i in test_ids:
+        #    test_graph.node[i]["prediction"] = prediction[i,:]
+            #print( test_graph.node[id])
 
-            predictions = {}
-            for id in test_ids:
-                pred =log.predict(embeds[[id_map[id]]])[0]
-                test_graph.node[id]["prediction"] = [int(pred[0]),int(pred[1])]
-            if self.mscgnn_infer is not None:
-                for id in test_ids:
-                    pred = log.predict_proba(embeds[[id_map[id]]])
-                    print("pred : ", pred)
-                    pred = pred[1]
-                    print("pred0", pred)
-                    arc = self.mscgnn_infer.arcs[id]
-                    arc.label_accuracy =  float(pred[0][1])#[0])#[int(pred[0]),int(pred[1])]
+        predictions = {}
+        test_graph_write = test_graph
+        for id in test_ids:
+            pred =log.predict(embeds[[id_map[id]]])
+            pred = log.predict_proba(embeds[[id_map[id]]])
+            #print(pred)
+            pred= pred[1]
+            test_graph.node[id]["prediction"] = pred[0] #[int(pred[0]),int(pred[1])]
+            test_graph_write.node[id]["prediction"] = str(pred[0])
+        if False:#self.mscgnn_infer is not None:
+            for arc, id in zip(self.mscgnn_infer.arcs, test_ids):
+                pred = log.predict_proba(embeds[[id_map[id]]])
+                #print("pred : ", pred)
+                ############################################################arc out of index
+                pred = pred[1]
+                #print("pred0", pred)
+                arc.prediction =  float(pred[0][1])#[0])#[int(pred[0]),int(pred[1])]
+                #arc.prediction =  pred[0]
 
-            pred_path = os.path.join(self.embedding_path.split("/")[:-1][0], self.embedding_path.split("/")[:-1][1],self.embedding_path.split("/")[:-1][2],'predicted_graph-G.json')
-            
-            if not os.path.exists(  pred_path):
-                open( pred_path, 'w').close()
-            with open( pred_path, 'w') as graph_file:
-                write_form = json_graph.node_link_data(test_graph)
-                json.dump(write_form, graph_file)
-            print("Prediction written to: ", pred_path)
-            if self.mscgnn_infer is not None:
-                return self.mscgnn_infer
+        pred_path = os.path.join(self.embedding_path.split("/")[:-1][0], self.embedding_path.split("/")[:-1][1],self.embedding_path.split("/")[:-1][2],'predicted_graph-G.json')
+
+        if not os.path.exists(  pred_path):
+            open( pred_path, 'w').close()
+        with open( pred_path, 'w') as graph_file:
+            write_form = json_graph.node_link_data(test_graph_write)
+            json.dump(write_form, graph_file)
+        print("Prediction written to: ", pred_path)
+        if self.mscgnn_infer is not None:
+            self.mscgnn_infer.G = test_graph
+            return self.mscgnn_infer
 
     def run(self):
         
         if self.trained_path:
             print("TRAIN PATH:  ", self.trained_path)
-            self.G, self.feats, self.id_map, self.walks, self.labels, self.num_neg, self.number_positive_samples = load_data(self.trained_path, load_walks=False, scheme_required = True, train_or_test='train')
+            self.G, self.feats, self.id_map, self.walks, self.labels, self.num_neg, self.number_positive_samples = \
+                load_data(self.trained_path, load_walks=False,
+                          scheme_required = True, train_or_test='train')
         elif self.G:
             G = self.G
             feats = self.feats
@@ -240,6 +250,7 @@ class LinearRegression:
             if not self.label_node_predictions:
                 self.run_regression(train_embeds, train_labels, test_embeds, test_labels)
             else:
-                self.run_regression(train_embeds, train_labels, test_embeds, test_labels, test_ids=test_ids, test_graph=G_infer, embeds=embeds, id_map=id_map)
+                self.run_regression(train_embeds, train_labels, test_embeds, test_labels
+                                    , test_ids=test_ids, test_graph=G_infer, embeds=embeds, id_map=id_map)
         if self.mscgnn_infer is not None:
             return self.mscgnn_infer

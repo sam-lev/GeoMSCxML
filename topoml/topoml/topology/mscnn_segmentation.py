@@ -237,6 +237,7 @@ class mscnn_segmentation:
         #print("%%%%%%%%%%%% image file path %%%%%%: ", fname_raw)
         
         starting_dir = geomsc_exec_path#os.path.join( os.path.dirname(os.path.abspath(__file__)), "..")
+        msc_build ="/home/sam/Documents/PhD/Research/GradIntegrator/build/extract2dridgegraph"
         starting_dir = os.path.join( starting_dir
                                      ,"GradIntegrator"
                                      ,"build"
@@ -244,28 +245,38 @@ class mscnn_segmentation:
 
         #print("list ex dir  %%%%%%%%%%", os.listdir(starting_dir))
 
+
+
         if X is None and Y is None:
             X=image.shape[1]
             Y=image.shape[2]
 
-        proc = subprocess.Popen(
-            [os.path.join('..', starting_dir, "extract2dridgegraph"),  #note: '.' needed to run executable.
+        proc = subprocess.Popen([
+            os.path.join(msc_build, "extract2dridgegraph"),  #note: '.' needed to run executable.
              fname_raw,
              str(X),
              str(Y),
-             str(persistence),
-             ],
+             str(persistence)],
             shell=False,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+
+
+
+
         stdout, stderr = proc.communicate()
+        #for line in proc.stderr:
+        #    sys.stdout.write(line)
+        #for line in proc.stdout:
+        #    sys.stdout.write(line)
         self.msc = GeoMSC()
         self.msc.read_from_file(fname_raw)
         self.msc.geomsc = self.msc
         self.msc.msc = self.msc
-        
+
+
         if delete_msc_files:
             raw_folder = os.path.join(write_path.rsplit(".", 1)[0],'raw_images')
             for the_file in os.listdir(raw_folder):
