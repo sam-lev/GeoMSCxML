@@ -1131,7 +1131,7 @@ class supervised:
               , weight_decay=0.001, polarity=6, use_embedding=None
               , gpu=0, val_model='cvt', model_size="small", sigmoid=False, env='multivax'):
 
-        if not self.params_set:
+        if True:#not self.params_set:
             ## variables not actually used but implemented for later development
             self.train_prefix = train_prefix
             self.G = G
@@ -1192,6 +1192,13 @@ class supervised:
             np.random.seed(seed)
             tf.set_random_seed(seed)
 
+            def del_all_flags(FLAGS):
+                flags_dict = FLAGS._flags()
+                keys_list = [keys for keys in flags_dict]
+                for keys in keys_list:
+                    FLAGS.__delattr__(keys)
+
+            del_all_flags(tf.flags.FLAGS)
 
             tf.app.flags.DEFINE_boolean('log_device_placement', False,
                                         """Whether to log device placement.""")
@@ -1236,7 +1243,7 @@ class supervised:
 
             self.GPU_MEM_FRACTION = 0.98
 
-            self.params_set = True
+            #self.params_set = True
 
     def train(self, G=None, feats=None, id_map=None, walks=None, class_map=None
               , train_prefix='', load_walks=False, number_negative_samples=None
@@ -1694,6 +1701,7 @@ class supervised:
         self.model = model
         self.model_path = model_checkpoint
         self.sess = sess
+        tf.reset_default_graph()
         sess.close()
 
 
@@ -2314,6 +2322,9 @@ class supervised:
             # train from passed graph, assumed pre-labeled(/processed)
             # graph with test/train nodes
             elif self.G is not None and self.feats is not None and self.id_map is not None and self.class_map is not None and not self.train_prefix:
+                print(">>>")
+                print("first elif")
+                print(">>>>")
                 train_prefix = 'nNeg-' + str(self.number_negative_samples) + 'nPos-' + str(self.number_positive_samples)
                 print("using pre-processed graph data for gnn training")
                 self.number_negative_samples = self.number_negative_samples
@@ -2322,12 +2333,13 @@ class supervised:
                 train_data = (self.G, self.feats, self.id_map, self.walks, self.class_map, [], [])
 
             # train from cvt sampled graph and respective in/out arcs as train
-            elif self.positive_arcs and self.negative_arcs:
-                train_data = load_data(self.positive_arcs, self.negative_arcs, load_walks=self.load_walks, scheme_required=True,
-                                       train_or_test='train')
-                self.number_negative_samples = len(self.negative_arcs)
-                number_samples = len(self.positive_arcs) + len(self.negative_arcs)
-                proportion_negative = int(number_samples / float(self.number_negative_samples))
+            #elif self.positive_arcs and self.negative_arcs:
+            #    train_data = load_data(self.positive_arcs, self.negative_arcs, load_walks=self.load_walks, scheme_required=True,
+            #                           train_or_test='train')
+            #    self.number_negative_samples = len(self.negative_arcs)
+            #    number_samples = len(self.positive_arcs) + len(self.negative_arcs)
+            #    proportion_negative = int(number_samples / float(self.number_negative_samples))
+
             # keep labeled (test/train) graph for later use in testing
             self.graph = train_data[0]
             self.features = train_data[1]
@@ -2349,7 +2361,7 @@ class supervised:
         return train_data
 
 
-    def main(self, argv=None):
+"""    def main(self, argv=None):
         print("Loading training data..")
         #train_data = load_data(FLAGS.train_prefix)
 
@@ -2369,5 +2381,5 @@ class supervised:
         #_train(train_data)
 
         if __name__ == '__main__':
-            tf.app.run()
+            tf.app.run()"""
 

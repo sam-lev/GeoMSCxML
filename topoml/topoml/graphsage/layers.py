@@ -101,13 +101,13 @@ class Dense(Layer):
         if self.logging:
             self._log_vars()
 
-    def _call(self, inputs):
+    def _call(self, inputs, name='call'):
         x = inputs
 
-        x = tf.nn.dropout(x, 1-self.dropout)
+        x = tf.nn.dropout(x, 1-self.dropout, name=name+'dp')
 
         # transform
-        output = tf.matmul(x, self.vars['weights'])
+        output = tf.matmul(x, self.vars['weights'], name=name+'mm')
 
         # bias
         if self.bias:

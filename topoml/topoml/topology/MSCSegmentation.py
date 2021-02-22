@@ -174,6 +174,12 @@ class MSCSegmentation:
                 mask[mask > 0] = 1
                 # labeled_segmentation = segmentation * mask if type(mask) is not int else segmentation
                 labeled_mask = np.mean(mask, axis=0)
+                #labeled_mask = np.transpose(labeled_mask,(1,0))
+                rgblabeled_mask = np.zeros_like(image)
+                rgblabeled_mask[0, :, :] = mask
+                rgblabeled_mask[1, :, :] = mask
+                rgblabeled_mask[2, :, :] = mask
+                print("labeled mask shape ", labeled_mask.shape)
             # collect to return data buffer with msc
             images_.append(image)
             masks_.append(mask)
@@ -190,6 +196,8 @@ class MSCSegmentation:
                     mscnn.clear_msc()
                     #compute geometric msc
                     mscnn.image = copy.deepcopy(image)
+
+                    mscnn.image[rgblabeled_mask==0] = 1.0
                     image_name_and_path = os.path.join(data_path,im_path)
                     print(">>>>")
                     print(image_name_and_path)

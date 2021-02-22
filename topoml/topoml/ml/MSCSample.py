@@ -14,6 +14,10 @@ from topoml.topology.utils import (
     is_valley_arc,
 )
 from topoml.ml.utils import gaussian_fit
+
+from topoml.image.utils import warp_polar
+
+
 from topoml.image.feature import (
     mean_filter,
     variance_filter,
@@ -23,6 +27,8 @@ from topoml.image.feature import (
     gaussian_blur_filter,
     difference_of_gaussians_filter,
     sobel_filter,
+    cosine_similarity,
+    hyperbolic_distance,
     laplacian_filter,
     neighbor_filter,
 )
@@ -31,7 +37,7 @@ from topoml.topology.geometric_msc import GeoMSC
 
 class MSCSample():
     def __init__(self, msc=None, geomsc=None, msc_collection=None, image=None
-                 , features={}, labeled_segmentation=None, ridge=True, valley=True):
+                 , features={}, labeled_segmentation=None, use_inference = None, ridge=True, valley=True, select_label=False):
 
         self.msc = msc if msc is not None else geomsc
         self.geomsc = geomsc if geomsc is not None else msc
@@ -42,6 +48,9 @@ class MSCSample():
         self.arc_map = None
         self.arc_accuracies = None
         self.labeled_segmentation = None
+
+        self.select_label = select_label
+
         # msc after labeling arcs (updating arc.label_accuracy
         self.labeled_msc = None
         self.image = image
@@ -49,6 +58,9 @@ class MSCSample():
         self.lineG = None
         if self.msc is not None:
             self.assign_msc(self.msc)
+
+        self.use_inference = use_inference
+        self.compiled_features = None
 
     def assign_msc(self, msc):
         self.msc = msc
@@ -151,14 +163,26 @@ class MSCSample():
         hypercube[:, 1] *= Y
         if msc is not None:
             self.msc = msc
-        one_msc = self.msc.geomsc_dict[0]
-        one_msc.build_kdtree()#self.msc.build_kdtree()
-        node_map = one_msc.build_node_map()#self.msc.build_node_map()
+        one_msc = self.msc#.geomsc_dict[0]
+
+        all_selected_arcs = []
+        if self.select_label:
+            for i in self.selected_positive_arcs:
+                all_selected_arcs.append(i)
+            for i in self.selected_negative_arcs:
+                all_selected_arcs.append(i)
+
+        one_msc.build_kdtree() if not self.select_label else one_msc.build_select_kdtree(all_selected_arcs)#self.msc.build_kdtree()
+        node_map = one_msc.build_node_map() #if not self.select_label else one_msc.build_select_node_map(all_selected_arcs)#self.msc.build_node_map()
 
         seed_arc_keys = list()
 
+        #hypercube = tuple([arc.line[0] for arc in tuple(self.positive_arcs) + tuple(self.negative_arcs)]) \
+        #    if self.select_label else hypercube
+
         for x in hypercube:
-            arc_key = one_msc.get_closest_arc_index(x)#self.msc.get_closest_arc_index(x)
+            print(" >>>> hypercube x", x)
+            arc_key = one_msc.get_closest_arc_index(x) if not self.select_label else one_msc.get_closest_selected_arc_index(x) #self.msc.get_closest_arc_index(x)
             seed_arc_keys.append(arc_key)
         ring = 0
         ring_index = 0
@@ -186,9 +210,12 @@ class MSCSample():
                 if arc_key in arc_set and arc_key not in seed_arc_keys:
                     arc_set.remove(arc_key)
         """
-
+        #if not self.select_label:
         self.sort_labeled_arcs(accuracy_threshold=accuracy_threshold)
+
         print("map output arc ")
+        pos_arcs = self.positive_arc_ids if not self.select_label else self.selected_positive_arcs
+        neg_arcs = self.negative_arc_ids if not self.select_label else self.selected_negative_arc_ids
         sample_set_ids = (self.positive_arc_ids.intersection(seed_arc_keys), self.negative_arc_ids.intersection(seed_arc_keys))
         subgraph_positive_arcs = set()
         subgraph_negative_arcs = set()
@@ -276,7 +303,10 @@ class MSCSample():
             test_neg_indices.add(arc)
         test_set = test_pos_indices.union(test_neg_indices)
 
-        compiled_data = self.compile_features()
+        if self.compiled_features is None:
+            compiled_data = self.compile_features()
+        else:
+            compiled_data = self.compiled_features
 
         self.node_map = {}
         if self.lineG is None:
@@ -383,6 +413,15 @@ class MSCSample():
         self.lineG = G
         return self.lineG.copy()
 
+    def cosine_similarity(self, a1, a2):
+        min_len = min(len(a1), len(a2))
+        uv_x = np.transpose(np.array(a1)[:,0][0:min_len]).dot(np.array(a2)[:,0][0:min_len])
+        uv_y = np.transpose(np.array(a1)[:,1][0:min_len]).dot(np.array(a2)[:,1][0:min_len])
+        uv = uv_x + uv_y
+        mag = np.linalg.norm(np.array(a1)) * np.linalg.norm(np.array(a2))
+        cos_sim = uv/mag
+        return float(cos_sim)
+
     def set_default_features(self, image=None, images=None,min_number_features=1, number_features = 5):
         if image is not None:
             self.image = image
@@ -393,10 +432,12 @@ class MSCSample():
         self.features["min"] = lambda pixels: np.min(pixels)
         self.features["max"] = lambda pixels: np.max(pixels)
         self.features["median"] = lambda pixels: np.median(pixels)
-        self.features["mode"] = lambda pixels: scipy.stats.mode(np.round(pixels, 2))[0][0]
-        self.features["mean"] = lambda pixels: gaussian_fit(pixels)[0]
-        self.features["std"] = lambda pixels: gaussian_fit(pixels)[1]
+        #self.features["mode"] = lambda pixels: scipy.stats.mode(np.round(pixels, 2))[0][0]
+        #self.features["mean"] = lambda pixels: gaussian_fit(pixels)[0]
+
+        #self.features["std"] = lambda pixels: gaussian_fit(pixels)[1]
         self.features["var"] = lambda pixels: gaussian_fit(pixels)[2]
+
         self.features["skew"] = lambda pixels: scipy.stats.skew(pixels)
         self.features["kurtosis"] = lambda pixels: scipy.stats.kurtosis(pixels)
         self.features["range"] = lambda pixels: np.max(pixels) - np.min(pixels)
@@ -407,7 +448,7 @@ class MSCSample():
         # Alternatively, we can send all of the pixels, and in the
         # methods above, just operate on the first row which could be
         # guaranteeed to be the pixels for the arc being operated on.
-        self.features["neighbor_degree"] = lambda connected_pixels: len(
+        """self.features["neighbor_degree"] = lambda connected_pixels: len(
             connected_pixels
         )
         self.features["neighbor_min"] = lambda connected_pixels: np.min(
@@ -421,19 +462,23 @@ class MSCSample():
         )
         self.features["neighbor_std"] = lambda connected_pixels: np.std(
             [np.mean(pixels) for pixels in connected_pixels]
-        )
+        )"""
 
         # Pixel values to use for the aforementioned functions:
         self.images["identity"] = self.image
+
+        #first derivatives
         print("sobel")
         self.images["sobel"] = sobel_filter(self.image)
-        print("lablacian")
-        self.images["laplacian"] = laplacian_filter(self.image)
+
+        # second derivatives
+        #print("lablacian")
+        #self.images["laplacian"] = laplacian_filter(self.image)
         for i in range(min_number_features, number_features):
             pow1 = 2 ** (i - 1)
             pow2 = 2 ** i
-            print("mean: ", i)
-            self.images["mean_{}".format(i)] = mean_filter(self.image, i)
+            #print("mean: ", i)
+            #self.images["mean_{}".format(i)] = mean_filter(self.image, i)
             print("variance: ", i)
             self.images["variance_{}".format(i)] = variance_filter(
                 self.image, i
@@ -443,18 +488,24 @@ class MSCSample():
             print("min/max: ", i)
             self.images["min_{}".format(i)] = minimum_filter(self.image, i)
             self.images["max_{}".format(i)] = maximum_filter(self.image, i)
-            print("gauss: ", i)
-            self.images["gauss_{}".format(pow2)] = gaussian_blur_filter(
-                self.image, pow2
-            )
-            print("delta gauss: ",i)
-            self.images[
-                "delta_gauss_{}_{}".format(pow1, pow2)
-            ] = difference_of_gaussians_filter(self.image, pow1, pow2)
+            #print("gauss: ", i)
+            #self.images["gauss_{}".format(pow2)] = gaussian_blur_filter(
+            #    self.image, pow2
+            #)
 
+            #print("delta gauss: ",i)
+            #self.images[
+            #    "delta_gauss_{}_{}".format(pow1, pow2)
+            #] = difference_of_gaussians_filter(self.image, pow1, pow2)
+
+        print("map to polar")
+        middle = lambda x: (0.5 * x[0], 0.5 * x[1])
+        self.images["map_to_polar"] = warp_polar(self.image, center = middle(self.image.shape)
+                                , radius = np.max(self.image.shape)/2.0
+                                , output_shape = self.image.shape)
         #print("neighbor filter: ")
         #if number_features != 1:
-        #    for i, neighbor_image in enumerate(neighbor_filter(self.image, min_shift=2, max_shift=3)):   # ___________pixel nbrhd  ____
+        #    for i, neighbor_image in enumerate(neighbor_filter(self.image, min_shift=1, max_shift=3)):   # ___________pixel nbrhd  ____
         #        print(i)
         #        self.images["shift_{}".format(i)] = neighbor_image
 
@@ -567,14 +618,75 @@ class MSCSample():
                         if arc.label_accuracy < 0.2:
                             neg_vec = arc_feature_row
 
+            n1 , n2 = arc.nodes
+            n1_arcs = n1.arcs
+            n2_arcs = n2.arcs
+            deg = len(n1_arcs)
+            num_adj_arc_feats = 2
+            for adj_arc in n1_arcs:
+                # cosine similarity of adjacent arcs
+                cos_sim = cosine_similarity(arc.line, adj_arc.line)
+                arc_feature_row.append(cos_sim)
+                #deg += 1
+                if len(arc_features) == 0:
+                    feature_names.append("adjacency_cosine_similarity"+str(cos_sim))
+
+                # gradiant of distance between node most distant arc points in adjacent arcs
+                # on a Poincare ball, so the gradient of dtances in hyperbolic space
+                adj_n1, adj_n2 = adj_arc.nodes
+                adj_node = adj_n2 if adj_n2 != n1 else adj_n1
+                hyperbolic_dist = hyperbolic_distance(adj_node.xy, n1.xy)
+                #print("ad n1 node xy: ", adj_n1.xy, " other: ", n1.xy)
+                #print("ad n2 node xy: ", adj_n2.xy, " other: ", n2.xy)
+                #print(hyperbolic_dist)
+                arc_feature_row.append(hyperbolic_dist)
+                if len(arc_features) == 0:
+                    feature_names.append("grad_hyperbolic_dist"+str(hyperbolic_dist))
+
+            # degree of vertex
+            arc_feature_row.append(deg)
+            if len(arc_features) == 0:
+                feature_names.append("degree")
+
+            for i in range( (num_adj_arc_feats * deg) + 1, (num_adj_arc_feats * self.msc.max_degree) + 1 ):
+                arc_feature_row.append(0)
+                if len(arc_features) == 0:
+                    feature_names.append("fill")
+
+            deg = len(n2_arcs)
+            for adj_arc in n2_arcs:
+                cos_sim = cosine_similarity(arc.line, adj_arc.line)
+                arc_feature_row.append(cos_sim)
+                #deg += 1
+                if len(arc_features) == 0:
+                    feature_names.append("adjacency_cosine_similarity"+str(cos_sim))
+
+                adj_n1, adj_n2 = adj_arc.nodes
+                adj_node = adj_n1 if adj_n1 != n2 else adj_n2
+                hyperbolic_dist = hyperbolic_distance(adj_node.xy, n2.xy)
+                #print(hyperbolic_dist)
+                arc_feature_row.append(hyperbolic_dist)
+                if len(arc_features) == 0:
+                    feature_names.append("grad_hyperbolic_dist" + str(hyperbolic_dist))
+
+            # degree of vertex
+            arc_feature_row.append(deg)
+            if len(arc_features) == 0:
+                feature_names.append("degree")
+
+            for i in range( (num_adj_arc_feats * deg) + 1, (num_adj_arc_feats * self.msc.max_degree) + 1 ):
+                arc_feature_row.append(0)
+                if len(arc_features) == 0:
+                    feature_names.append("fill")
+
+
             #for node_id in arc.node_ids:
             #    if self.msc.nodes[node_id].index == 1:
             #        saddle_value = self.msc.nodes[node_id].value
             #    else:
             #        maximum_value = self.msc.nodes[node_id].value
-            arc_feature_row.append(0)#maximum_value - saddle_value)
-            if len(arc_features) == 0:
-                feature_names.append("persistence")
+
+
             arc_features.append(arc_feature_row)
 
         arc_features = np.array(arc_features).astype(dtype=np.float32)
@@ -583,8 +695,8 @@ class MSCSample():
         print("mu and std of features")
         mu = np.mean(arc_features, axis=0)
         std = np.std(arc_features, axis=0)
-        print(mu)
-        print(std)
+        #print(mu)
+        #print(std)
         print(" >> ")
         #arc_features = (arc_features - mu) / std   #performs much worse
 
@@ -618,21 +730,86 @@ class MSCSample():
                 return arc_features[selected_arc_indices, :]
 
         if return_labels:
+            print(">>>> returning with labels")
             return arc_features, feature_names
         else:
+            print(" returning without labels")
+            self.compiled_features = arc_features
             return arc_features
+
+    def update_training_from_inference(self):
+        selector = ArcSelector(self.image, self.msc)
+
+        in_arc_ids, in_arcs, out_arc_ids, out_arcs, out_pixels, selected_test_arcs = selector.launch_ui(msc=self.msc
+                                                                                    , use_inference=True)  # xlims=X, ylims=Y)
+
+        self.new_selected_positive_arc_ids = set(in_arc_ids)
+        self.new_selected_negative_arc_ids = set(out_arc_ids)
+        self.new_selected_positive_arcs = set(in_arcs)  # _ids
+        self.new_selected_negative_arcs = set(out_arcs)  # _ids
+        self.new_selected_test_arcs = set(selected_test_arcs)
+
+        self.selected_positive_arc_ids = self.new_selected_positive_arc_ids.union(self.selected_positive_arc_ids)
+        self.selected_negative_arc_ids = self.new_selected_negative_arc_ids.union(self.selected_negative_arc_ids)
+        self.selected_positive_arcs = self.new_selected_positive_arcs.union(self.selected_positive_arcs)
+        self.selected_negative_arcs = self.new_selected_negative_arcs.union(self.selected_negative_arcs)
+        self.selected_test_arcs = self.new_selected_test_arcs.union(self.selected_test_arcs)
+
+    def select_geomsc_training(self, image=None, X=None, Y=None, fname_selection=None):
+
+        if image is None:
+            image = self.image
+        #self.raw_image = io.imread(fname, as_gray=True)
+        #fname_raw = fname_base + "_smoothed.raw"
+        #blurred_image.tofile(fname_raw)
+        selector = ArcSelector(image, self.msc)
+
+        if fname_selection is not None:
+            in_arcs, out_arcs, out_pixels = selector.write_image(fname_selection)
+        else:
+            in_arc_ids, in_arcs, out_arc_ids, out_arcs, out_pixels, selected_test_arcs = selector.launch_ui(msc=self.msc)#xlims=X, ylims=Y)
+
+        self.selected_positive_arc_ids = in_arc_ids
+        self.selected_negative_arc_ids = out_arc_ids
+        self.selected_positive_arcs = in_arcs#_ids
+        self.selected_negative_arcs = out_arcs#_ids
+        self.selected_test_arcs = selected_test_arcs
+
+        print(" >>>> type from selection : " , type(self.negative_arcs))
+
+        #in_selection, out_selection = self._extract_selection(
+        #    in_arcs, out_arcs, out_pixels
+        #)
+        # self._build_models(in_selection, out_selection)
+        return (in_arcs, out_arcs, out_pixels)
 
     def msc_subgraph_splits(self, validation_samples, validation_hops
                                     , test_samples, test_hops
                                     , X, Y
                                     , accuracy_threshold=0.1, sigmoid=False, multiclass=False
-                            , msc=None,test_graph=False,min_number_features=1,  number_features=5):
+                                    , select_training_from_image=None
+                            ,use_infered_graph = False
+                            , update_training_from_inference = None
+                                    , msc=None,test_graph=False,min_number_features=1,  number_features=5):
         if msc is not None:
             self.assign_msc(msc)
 
         print(" %% computing image kernels for arc features ")
         # collect/compute features before partition
-        compiled_data = self.compile_features(min_number_features=min_number_features, number_features=number_features)
+        #if not self.use_inference:
+        if self.compiled_features is None:
+            self.compiled_data = self.compile_features(min_number_features=min_number_features
+                                                      , number_features=number_features)
+            self.compiled_features = self.compiled_data
+        else:
+            self.compiled_data = self.compiled_features
+
+        if self.use_inference:
+            #self.compiled_data = self.features
+            #self.selected_positive_arcs = set()
+            #self.selected_negative_arcs = set()
+            self.update_training_from_inference()
+
         print("% kernels complete")
 
         self.positive_arcs = set()
@@ -643,6 +820,8 @@ class MSCSample():
         self.validation_set_ids = {}
         self.test_set_ids = {}
 
+
+
         def fill_set(list):
             new_set = set()
             for s in list:
@@ -650,15 +829,21 @@ class MSCSample():
             return new_set
 
 
-            # could add class for high/mid accuracy arcs
+
+        if select_training_from_image is not None and not self.use_inference:
+            #self.selected_positive_arcs = set()
+            #self.selected_negative_arcs = set()
+            self.select_geomsc_training(image=select_training_from_image)  # , X=[0,X], Y=[0,Y])
+
+        # could add class for high/mid accuracy arcs
 
         print(" collecting validation/test subgraph ")
 
         # use cvt sampling to obtain validation/test edges
         self.sample_graph_neighborhoods(X,Y,count=validation_samples
-                                        , rings=validation_hops
-                                        , accuracy_threshold=accuracy_threshold, seed=123
-                                        , validation=True)
+                                            , rings=validation_hops
+                                         , accuracy_threshold=accuracy_threshold, seed=123
+                                         , validation=True)
         if test_samples != 0 and test_hops != 0:
             self.sample_graph_neighborhoods(X, Y, count=test_samples
                                             , rings=test_hops
@@ -670,6 +855,8 @@ class MSCSample():
 
         #val_and_test = self.validation_set["positive"].union(self.validation_set["negative"]).union(self.test_set["positive"]).union(self.test_set["negative"])
         all_validation = self.validation_set_ids["positive"].union(self.validation_set_ids["negative"])
+
+
 
         #node_map = self.msc.build_node_map()
         #self.sort_labeled_arcs(accuracy_threshold=accuracy_threshold)
@@ -684,9 +871,12 @@ class MSCSample():
         node_ids = {}
         node_labels = {}
 
+
+
+
         i_val = 0  ##!!!! need to set size for val set
 
-        for arc, features in zip(self.arcs, compiled_data):
+        for arc, features in zip(self.arcs, self.compiled_data):
             index = tuple(arc.node_ids) + (len(arc.line),)
             for node_id in arc.node_ids:
                 #
@@ -732,7 +922,7 @@ class MSCSample():
                 node["features"] = features.tolist()
 
                 # labeled nodes assigned as train, test, or val
-                if bool(np.sum(label)):
+                if bool(np.sum(label)) and select_training_from_image is None and not self.use_inference:
                     node["label"] = label  # arc.label_accuracy
                     node["label_accuracy"] = arc.label_accuracy
                     node["prediction"] = None
@@ -759,6 +949,43 @@ class MSCSample():
                         node["train"] = True
                         node["test"] = False
                         node["val"] = False
+                else:
+                    node["label"] = label  # arc.label_accuracy
+                    node["label_accuracy"] = arc.label_accuracy
+                    node["prediction"] = None
+
+                    if self.use_inference and index not in self.selected_test_arcs:
+                        if not isinstance(arc.prediction, (int, np.integer)):
+                            pred = [1, 0] if arc.prediction[0] >= 0.5 else [0, 1]
+                        else:
+                            pred = [1, 0] if float(arc.prediction) <= 0.5 else [0 , 1]
+                        inf_train_label = pred #node["prediction"]
+                        node["label"] = inf_train_label
+
+                    modified = 0
+
+                    if index in all_validation:
+                        modified = 1
+                        node["train"] = False
+                        node["test"] = False
+                        node["val"] = True
+                    elif index not in all_validation and (index in self.selected_negative_arc_ids or index in self.selected_positive_arc_ids
+                                                          and index not in self.selected_test_arcs):
+
+                        label = [
+                            int(index in self.selected_negative_arc_ids),
+                            int(index in self.selected_positive_arc_ids),
+                        ]
+                        node["label"] = label
+                        node["test"] = False
+                        node["val"] = False
+                        node["train"] = True
+                    else:  # and  i_val < val_count:
+                        modified = 1
+                        node["train"] = False
+                        node["test"] = True
+                        node["val"] = False
+
 
 
                 """Label all non-selected arcs as test"""
@@ -782,7 +1009,7 @@ class MSCSample():
         s2 = json.dumps(node_ids)  # dict: nodes to ints
         s3 = json.dumps(node_labels)  # dict: node_id to class
 
-        return (data1, node_ids, node_labels, compiled_data)  # (s1, s2, s3, compiled_data)
+        return (data1, node_ids, node_labels, self.compiled_data)  # (s1, s2, s3, compiled_data)
 
     def msc_persistence_subgraph_split(self, persistence_values, blur
                                     , test_samples, test_hops

@@ -6,8 +6,12 @@ import numpy as np
 from scipy import ndimage
 from skimage import filters, morphology, restoration, feature, transform
 
-# Local application imports
+from geomstats.geometry.poincare_ball import PoincareBall
 
+import os
+print(os.getcwd())
+
+# Local application imports
 
 # TODO: Scikit-Image has limited ability to apply filters to 3D images,
 # thus I am using scipy.ndimage in a few places. Reference this issue
@@ -180,8 +184,71 @@ def laplacian_filter(image):
     """
     return filters.laplace(image, ksize=3)
 
+def cosine_similarity( a1, a2):
+        min_len = min(len(a1), len(a2))
+        uv_x = np.transpose(np.array(a1)[:,0][0:min_len]).dot(np.array(a2)[:,0][0:min_len])
+        uv_y = np.transpose(np.array(a1)[:,1][0:min_len]).dot(np.array(a2)[:,1][0:min_len])
+        uv = uv_x + uv_y
+        mag = np.linalg.norm(np.array(a1)) * np.linalg.norm(np.array(a2))
+        cos_sim = uv/mag
+        return float(cos_sim)
 
-def neighbor_filter(image, max_shift=3):
+def map_to_polar(image):
+    """
+    Remap image to polar or log-polar coordinates space.
+    Parameters
+    ----------
+    image : ndarray
+        Input image. Only 2-D arrays are accepted by default. If
+        `multichannel=True`, 3-D arrays are accepted and the last axis is
+        interpreted as multiple channels.
+    center : tuple (row, col), optional
+        Point in image that represents the center of the transformation (i.e.,
+        the origin in cartesian space). Values can be of type `float`.
+        If no value is given, the center is assumed to be the center point
+        of the image.
+    radius : float, optional
+        Radius of the circle that bounds the area to be transformed.
+
+    Returns:
+    warpedndarray
+
+        The polar or log-polar warped image.
+
+    """
+    middle = lambda x: (0.5 * x[0], 0.5 * x[1])
+    return 0#warp_polar(image
+    #                            , center = middle(image.shape)
+    #                            , radius = np.max(image.shape)/2.0
+    #                            , output_shape = image.shape)
+
+def hyperbolic_distance(point_a, point_b):
+    """Gradient of squared hyperbolic distance.
+
+    Gradient of the squared distance based on the
+    Ball representation according to point_a
+
+    Parameters
+    ----------
+    point_a : array-like, shape=[n_samples, dim]
+        First point in hyperbolic space.
+    point_b : array-like, shape=[n_samples, dim]
+        Second point in hyperbolic space.
+
+    Returns
+    -------
+    dist : array-like, shape=[n_samples, 1]
+        Geodesic squared distance between the two points.
+    """
+    #min_len = min(len(point_a), len(point_b))
+    hyperbolic_metric = PoincareBall(2).metric
+    log_map = hyperbolic_metric.log(np.array(point_b), np.array(point_a))
+    grad_hyperbolic = -2 * log_map
+    hyperbolic_dist = hyperbolic_metric.dist(np.array(point_b), np.array(point_a))
+
+    return hyperbolic_dist
+
+def neighbor_filter(image, min_shift=1, max_shift=3):
     """Create a list of filters by shifting the image a single pixel at
     a time in every direction up to a maximum shift of max_shift. This
     includes all combination of diagonal shifts.
@@ -202,7 +269,7 @@ def neighbor_filter(image, max_shift=3):
     for t in directions:
         if np.sum(np.abs(t)) == 0:
             continue
-        for sigma in range(1, max_shift):
+        for sigma in range(min_shift, max_shift):
             shift = tuple([sigma * val for val in t])
             neighbor_images.append(ndimage.shift(image, shift))
             # tform = transform.SimilarityTransform(

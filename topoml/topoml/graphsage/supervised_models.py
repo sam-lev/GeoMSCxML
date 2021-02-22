@@ -1,8 +1,9 @@
 import tensorflow as tf
 
-import graphsage.models as models
-import graphsage.layers as layers
-from graphsage.aggregators import MeanAggregator, MaxPoolingAggregator, MeanPoolingAggregator, SeqAggregator, GCNAggregator
+import topoml.graphsage.models as models
+import topoml.graphsage.layers as layers
+from topoml.graphsage.aggregators import MeanAggregator, MaxPoolingAggregator, MeanPoolingAggregator\
+    , SeqAggregator, GCNAggregator, TwoMaxLayerPoolingAggregator
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -12,8 +13,9 @@ class SupervisedGraphsage(models.SampleAndAggregate):
 
     def __init__(self, num_classes,
             placeholders, features, adj, degrees,
-            layer_infos, concat=True, aggregator_type="mean", 
-            model_size="small", sigmoid_loss=False, identity_dim=0,
+            layer_infos, concat=True, aggregator_type="mean",
+                 name=''
+                 ,model_size="small", sigmoid_loss=False, identity_dim=0,
                 **kwargs):
         '''
         Args:
@@ -38,7 +40,7 @@ class SupervisedGraphsage(models.SampleAndAggregate):
         elif aggregator_type == "meanpool":
             self.aggregator_cls = MeanPoolingAggregator
         elif aggregator_type == "maxpool":
-            self.aggregator_cls = MaxPoolingAggregator
+            self.aggregator_cls = TwoMaxLayerPoolingAggregator
         elif aggregator_type == "gcn":
             self.aggregator_cls = GCNAggregator
         else:
@@ -72,7 +74,7 @@ class SupervisedGraphsage(models.SampleAndAggregate):
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
 
-        self.build()
+        self.build()#name=name)
 
 
     def build(self):
@@ -87,7 +89,7 @@ class SupervisedGraphsage(models.SampleAndAggregate):
         dim_mult = 2 if self.concat else 1
         self.node_pred = layers.Dense(dim_mult*self.dims[-1], self.num_classes, 
                 dropout=self.placeholders['dropout'],
-                act=lambda x : x)
+                act=lambda x : x)#,name=name)
         # TF graph management
         self.node_preds = self.node_pred(self.outputs1)
 
@@ -96,8 +98,43 @@ class SupervisedGraphsage(models.SampleAndAggregate):
         clipped_grads_and_vars = [(tf.clip_by_value(grad, -5.0, 5.0) if grad is not None else None, var) 
                 for grad, var in grads_and_vars]
         self.grad, _ = clipped_grads_and_vars[0]
-        self.opt_op = self.optimizer.apply_gradients(clipped_grads_and_vars)
+        self.opt_op = self.optimizer.apply_gradients(clipped_grads_and_vars, name="opt_op")
         self.preds = self.predict()
+
+    def update_graph_adjacency(self, features, placeholders, adjacency
+                               , layer_infos, degrees, num_classes, identity_dim=0 , name=''):
+        self.inputs1 = placeholders["batch"]
+        self.adj_info = adjacency
+        self.degrees = degrees
+        self.layer_infos = layer_infos
+        if identity_dim > 0:
+           self.embeds = tf.get_variable("node_embeddings", [adjacency.get_shape().as_list()[0], identity_dim])
+        else:
+           self.embeds = None
+        if features is None:
+            if identity_dim == 0:
+                raise Exception("Must have a positive value for identity feature dimension if no input features given.")
+            self.features = self.embeds
+        else:
+            self.features = tf.Variable(tf.constant(features, dtype=tf.float32), trainable=False)
+            if not self.embeds is None:
+                self.features = tf.concat([self.embeds, self.features], axis=1)
+        self.dims = [(0 if features is None else features.shape[1]) + identity_dim]
+        self.dims.extend([self.layer_infos[i].output_dim for i in range(len(self.layer_infos))])
+        self.batch_size = placeholders["batch_size"]
+        self.placeholders = placeholders
+        self.num_classes = num_classes
+        samples1, support_sizes1 = self.sample(self.inputs1, self.layer_infos)
+        num_samples = [layer_info.num_samples for layer_info in self.layer_infos]
+        self.outputs1, self.aggregators = self.aggregate(samples1, [self.features], self.dims, num_samples,
+                                                         support_sizes1, concat=self.concat, model_size=self.model_size)
+        self.outputs1 = tf.nn.l2_normalize(self.outputs1, 1)
+        dim_mult = 2 if self.concat else 1
+        self.node_pred = layers.Dense(dim_mult * self.dims[-1], self.num_classes,
+                                      dropout=self.placeholders['dropout'],
+                                      act=lambda x: x)#, name=name)
+        # TF graph management
+        self.node_preds = self.node_pred(self.outputs1)
 
     def _loss(self):
         # Weight decay loss
@@ -121,6 +158,6 @@ class SupervisedGraphsage(models.SampleAndAggregate):
 
     def predict(self):
         if self.sigmoid_loss:
-            return tf.nn.sigmoid(self.node_preds)
+            return tf.nn.sigmoid(self.node_preds, name="preds")
         else:
-            return tf.nn.softmax(self.node_preds)
+            return tf.nn.softmax(self.node_preds, name="preds")

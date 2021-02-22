@@ -20,6 +20,7 @@ class MSCNode:
     def __init__(self):
         self.arcs = []
         self.z = 0
+        self.degree = 0
 
     def read_from_line(self, line):
         tmplist = line.split(",")
@@ -31,6 +32,7 @@ class MSCNode:
         self.z = 0
 
     def add_arc(self, arc):
+        self.degree += 1
         self.arcs.append(arc)
 
 
@@ -79,9 +81,15 @@ class GeoMSC:
         self.geomsc = geomsc
         self.msc = geomsc
         self.arc_map = []
+        self.selected_arc_map = []
         self.arc_dict = {}
         self.test_geomsc = False
         self.union = 0
+        self.z = 0
+        self.geomsc_dict = {}
+        self.geomsc_dict[self.z] = geomsc
+
+        self.max_degree = 0
 
 
     def make_arc_id(self,a):
@@ -117,6 +125,10 @@ class GeoMSC:
             n2.index = a.index
             n1.add_arc(a)
             n2.add_arc(a)
+            if n1.degree > self.max_degree:
+                self.max_degree = n1.degree
+            if n2.degree > self.max_degree:
+                self.max_degree = n2.degree
             a.nodes = [n1, n2]
             self.arcs.append(a)
             key = self.make_arc_id(a)
@@ -139,6 +151,17 @@ class GeoMSC:
             current_arc_index += 1
         return self.node_map
 
+    def build_select_node_map(self, arcs):
+        self.select_node_map = {}
+        current_arc_index = 0
+        for arc in arcs:
+            for node_id in arc.node_ids:
+                if node_id not in self.select_node_map:
+                    self.select_node_map[node_id] = []
+                self.select_node_map[node_id].append(current_arc_index)
+            current_arc_index += 1
+        return self.select_node_map
+
     def build_kdtree(self):
         arc_points = []
         def make_arc_id(a):
@@ -152,9 +175,26 @@ class GeoMSC:
         self.kdtree = scipy.spatial.KDTree(arc_points, leafsize=10000)
         return self.kdtree
 
+    def build_select_kdtree(self, arcs):
+        arc_points = []
+        def make_arc_id(a):
+            return tuple(a.node_ids) + (len(a.line),)
+        for arc in sorted(arcs, key=lambda arc: len(arc.line)):
+            index = make_arc_id(arc)
+            arc_points.extend(arc.line)
+            self.selected_arc_map.extend([index] * len(arc.line))
+        # only needed for selection ui to choose neighboring arcs
+        # can cause error with sparse MSC
+        self.select_kdtree = scipy.spatial.KDTree(arc_points, leafsize=10000)
+        return self.select_kdtree
+
     def get_closest_arc_index(self, point):
         distance, index = self.kdtree.query(point)
         return self.arc_map[index]
+
+    def get_closest_selected_arc_index(self, point):
+        distance, index = self.select_kdtree.query(point)
+        return self.selected_arc_map[index]
 
     def write_msc(self, filename, msc=None,  label=False):
 
@@ -236,20 +276,24 @@ class GeoMSC:
             mapped_image = original_image
         mapped_image *= 255
 
+
+
         label_map_image = copy.deepcopy(mapped_image)
 
         for arc in self.arcs:#msc.arcs:
             if type is None:
-                label_color = cmap(arc.label_accuracy)
-            elif type=='partitions':
-                label_color = cmap(0.1) if arc.partition=="train" else cmap(0.4) if arc.partition=="val" else cmap(0.9)
+                percent_overlap_color = cmap(arc.label_accuracy)
+            #elif type=='partitions':
+            #    label_color = cmap(0.1) if arc.partition=="train" else cmap(0.4) if arc.partition=="val" else cmap(0.9)
             else:
-                #print("pred ", arc.prediction)
-                if len(arc.prediction) == 3:
-                    print(arc.prediction)
-                    label_color = cmap(0.5) if float(arc.prediction[2]) > 0.5 else cmap(float(arc.prediction[1]))
+                if not isinstance(arc.prediction, (int, np.integer)):
+                    if len(arc.prediction) == 3:
+                        label_color = cmap(0.5) if float(arc.prediction[2]) > 0.5 else cmap(float(arc.prediction[1]))
+                    else:
+                        label_color = cmap(float(arc.prediction[1]))
                 else:
-                    label_color = cmap(float(arc.prediction[1]))
+                    #print("pred ", arc.prediction)
+                    label_color = cmap(float(arc.prediction))
             if original_image is not None:
                 x = 1 if invert else 0
                 y = 0 if invert else 1
@@ -359,6 +403,8 @@ class GeoMSC_Union(GeoMSC):
         self.arc_map2 = geomsc2.arc_map if geomsc1 is not None else {}
         self.arc_dict2 = geomsc2.arc_dict if geomsc1 is not None else {}
         self.arcs2_index = []
+
+        self.max_degree = 0
 
         if geomsc1 is not None:
             self._union_nodes()
@@ -549,6 +595,9 @@ class GeoMSC_Union(GeoMSC):
         n0.index = a.index# arc1.index + self.max_node_id_1
         n0.add_arc(a)
 
+        if n0.degree > self.max_degree:
+            self.max_degree = n0.degree
+
         arc2 = self.arcs[g2_arc_offset]
         node2 = self.nodes[ arc2.node_ids[0]] #arc2.node_ids[0] + self.max_node_id_2]
         i = 1
@@ -564,6 +613,9 @@ class GeoMSC_Union(GeoMSC):
         n1.index = a.index
         n1.xy = node2.xy
         n1.add_arc(a)
+
+        if n1.degree > self.max_degree:
+            self.max_degree = n1.degree
 
         euclidian_dist = np.sqrt((n0.xy[0] - n1.xy[0])**2 + (n0.xy[1] - n1.xy[1])**2 )
         p1 = np.sqrt((n0.xy[0] + n0.xy[1])**2 )
@@ -706,6 +758,12 @@ class GeoMSC_Union(GeoMSC):
             n2.index = a.index
             n1.add_arc(a)
             n2.add_arc(a)
+
+            if n1.degree > self.max_degree:
+                self.max_degree = n1.degree
+            if n2.degree > self.max_degree:
+                self.max_degree = n2.degree
+
             a.nodes = [n1, n2]
             self.arcs.append(a)
             a_id = make_arc_id(a)

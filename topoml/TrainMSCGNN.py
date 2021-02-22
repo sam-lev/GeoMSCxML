@@ -40,105 +40,109 @@ class MSCGNNTrainer:
         #self.persistence_values = sorted([0.001,0.001,0.001])   # , 0.01, 0.1]#[10, 12, 15, 20 , 23, 25, 30] # below 1 for GeoMSC
 
 
-        self.number_images = 4
+        self.number_images = 1#4
         self.min_number_features = 1
         self.number_features = 3
 
-        self.persistence_values = sorted([1.01e-4, 1.01e-2])#, 1.01e-2, 1.01e-1])
-        self.persistence_cardinality = {0: 3, 1:1}#, 1: 2, 2:1}#self.number_images}
-        self.blur_sigmas = [2]  # 1.0, 2.0, 5.0, 10] # add iterative blur &  try multichannel
+        #list of persistences to use for image set in geomsc union space
+        #dict is {index : number images, index+1 : number imaages, ... }
+        self.persistence_values = sorted([1.01e-7])#, 1.01e-2])#, 1.01e-2, 1.01e-1])
+        self.persistence_cardinality = {0: 1}#3, 1:1}#, 1: 2, 2:1}#self.number_images}
+        self.blur_sigmas = [1]  # 1.0, 2.0, 5.0, 10] # add iterative blur &  try multichannel
 
         # index for respective images to be first train image and inference image
         self.train_data_idx = '0'
-        self.inference_data_idx = '1'#str(self.number_images-1) #'1'
+        self.inference_data_idx = '0'#'1'#str(self.number_images-1) #'1'
 
-
+        
         # index od pers for first trainng image and inference image
         self.pers_train_idx = 0
         self.pers_inf_idx = 0
         self.blur = 0
 
-        supervised_learning_rates = [1.0e-1, 1.0e-2, 1.0e-3, 4.0e-4]
+        self.select_label = True
+        #                                 1,
+        supervised_learning_rates = [1.0e-1, 1.0e-2, 1.01e-3, 3.0e-4, 1.0e-5]
         unsupervised_learning_rates = [2.0e-1, 2.0e-6, 2.0e-7, 2.0e-8]
 
         self.learning_rate = supervised_learning_rates[2]#1.01e-4
         self.weight_decay = 0#.0
-        #                [   0,   1,    2, 3, 4, 5,  6,  7,  8,  9, 10]
-        polarity_study = [-0.8, 0.25, 0.8, 1, 2, 3, 10, 17, 23, 25, 32] #10 > 23 #neg samples along walk context pair, 2 bc two min max
-        self.polarity = polarity_study[8] #23 opt so far
+        #                [   0,   1,    2, 3, 4, 5,  6,  7,  8,  9, 10, 11]
+        polarity_study = [-0.8, 0.25, 0.8, 1, 2, 4 ,7, 10, 18, 23, 25, 32] #10 > 23 #neg samples along walk context pair, 2 bc two min max
+        self.polarity = polarity_study[9] #23 opt so far
 
-        self.epochs = 20
+        self.epochs = 20#60
         self.depth = 2
 
         # to ensure in line graph random walks extend to neighbors, 3 and more walks to improve statistics
         # walks used to define node stochastic node similarity based on observed co-occurance along
         # numerous walks.
         self.walk_length = 3
-        self.number_walks = 65
-        self.validation_samples = 5
+        self.number_walks = 55
+        self.validation_samples = 4
         self.validation_hops = 4
         
-        self.batch_size = 34
+        self.batch_size = 64
 
         # each layer is a hop, so l2 is 2-hop, this is the number of samples taken from two hops
         # l1 is then k-hop, sample higher depth 2-hop neighbors first then 1 hop
         # sample farther and generate embedding towards target node / 1-hop
         # l1 = k-hops, lk = 1 hop
-        self.max_node_degree =  36 #subsample edges so no node has degree larger than <---
-        self.degree_l1       =  34  # number of neighbors sampled per node (can not be greater than msx_node_degree)
-        self.degree_l2       =  6# edge chromatic number of G is equal to vertex chromatic number L(G)
-        self.degree_l3       =  6
+        self.max_node_degree =  37#subsample edges so no node has degree larger than <---
+        self.degree_l1       =  6  # number of neighbors sampled per node (can not be greater than msx_node_degree)
+        self.degree_l2       =  3# edge chromatic number of G is equal to vertex chromatic number L(G)
+        self.degree_l3       =  0
 
         self.aggregator = \
             ['graphsage_maxpool', 'graphsage_seq', 'graphsage_mean', 'gcn'
                 , 'graphsage_meanpool', 'n2v'][0]
 
         self.model_size      =  "small"
-        self.out_dim_1       =  256//2 #512//2 #int(256 / 2)  #
-        self.out_dim_2       =  256//2 #512//2 #int(256 / 2)
+        self.out_dim_1       =  256 #512//2 #int(256 / 2)  #
+        self.out_dim_2       =  256 #512//2 #int(256 / 2)
 
         self.all_param = [ self.persistence_values, self.blur_sigmas , self.number_images ,self.number_features, self.train_data_idx , self.inference_data_idx , self.learning_rate ,  self.weight_decay,
         self.polarity ,self.epochs ,  self.depth ,self.walk_length , self.number_walks , self.validation_samples , self.validation_hops , self.batch_size ,self.max_node_degree,self.degree_l1 ,self.degree_l2 , self.degree_l3 ,self.model_size,  self.out_dim_1 , self.out_dim_2  ]
 
         if test_param == True:
-            self.number_images = 4
+            self.number_images = 1
             self.min_number_features = 1
             self.number_features = 3
 
-            self.persistence_values = sorted([1.01e-3, 1.01e-2])  # , 1.01e-2, 1.01e-1])
-            self.persistence_cardinality = {0: 2, 1: 1}  # , 1: 2, 2:1}#self.number_images}
-            self.blur_sigmas = [2]
+            self.persistence_values = sorted([1.01e-3])#, 1.01e-2])  # , 1.01e-2, 1.01e-1])
+            self.persistence_cardinality = {0: 1}#, 1: 2}  # , 1: 2, 2:1}#self.number_images}
+            self.blur_sigmas = [1]
 
             # index for respective images to be first train image and inference image
             self.train_data_idx = '0'
-            self.inference_data_idx = '1'
+            self.inference_data_idx = '0'
 
             # index od pers for first trainng image and inference image
             self.pers_train_idx = 0
             self.pers_inf_idx = 0
             self.blur = 0
 
-            supervised_learning_rates = [1.0e-1, 1.0e-2, 1.0e-3, 4.0e-4]
+            supervised_learning_rates = [1.0e-1, 1.0e-2, 1.1e-3, 3.0e-4]
             unsupervised_learning_rates = [2.0e-1, 2.0e-6, 2.0e-7, 2.0e-8]
 
-            self.learning_rate = supervised_learning_rates[2]
+            self.learning_rate = supervised_learning_rates[3]
             self.weight_decay = 0
             #                [   0,   1,    2, 3, 4, 5,  6,  7,  8,  9, 10]
             polarity_study = [-0.8, 0.25, 0.8, 1, 2, 3, 10, 17, 23, 25,
                               32]
             self.polarity = polarity_study[8]
 
-            self.epochs = 2
+            self.epochs = 12
             self.depth = 2
 
-            self.walk_length = 3
-            self.number_walks = 10
-            self.validation_samples = 2
+            self.walk_length = 5
+            self.number_walks = 15
+            self.validation_samples = 4
             self.validation_hops = 2
 
-            self.batch_size = 8
-            self.max_node_degree = 7  # subsample edges so no node has degree larger than <---
-            self.degree_l1 = 6  # number of neighbors sampled per node (can not be greater than msx_node_degree)
+            self.batch_size = 64
+            self.max_node_degree = 34  # subsample edges so no node has degree larger than <---
+            self.degree_l1 = 32  # number of neighbors sampled per node (can not be greater than msx_node_degree)
             self.degree_l2 = 6  # edge chromatic number of G is equal to vertex chromatic number L(G)
             self.degree_l3 = 0
             self.aggregator = \
@@ -146,8 +150,8 @@ class MSCGNNTrainer:
                     , 'graphsage_meanpool', 'n2v'][0]
 
             self.model_size = "small"
-            self.out_dim_1 = 256 // 4  # 512//2 #int(256 / 2)  #
-            self.out_dim_2 = 256 // 4  # 512//2 #int(256 / 2)
+            self.out_dim_1 = 256//2# // 4  # 512//2 #int(256 / 2)  #
+            self.out_dim_2 = 256//2# // 4  # 512//2 #int(256 / 2)
             self.all_param = [self.persistence_values, self.blur_sigmas, self.number_images, self.number_features,
                               self.train_data_idx, self.inference_data_idx, self.learning_rate, self.weight_decay,
                               self.polarity, self.epochs, self.depth, self.walk_length, self.number_walks,
@@ -155,7 +159,7 @@ class MSCGNNTrainer:
                               self.degree_l1, self.degree_l2, self.degree_l3, self.model_size, self.out_dim_1,
                               self.out_dim_2]
 
-        self.msc_arc_accuracy_threshold = 0.25
+        self.msc_arc_accuracy_threshold = 0.1
 
         self.LocalSetup = LocalSetup(env=args.env)
 
@@ -198,7 +202,7 @@ class MSCGNNTrainer:
                                                                        , data_path=self.LocalSetup.drive_training_path
                                                                        ,segmentation_path=self.LocalSetup.drive_training_segmentation_path
                                                                        , write_path=self.LocalSetup.drive_training_base_path
-                                                                       , label=True
+                                                                       , label=True#not self.select_label
                                                                        , save=False
                                                                        , valley=True, ridge=True
                                                                        ,env=args.env
@@ -259,9 +263,12 @@ class MSCGNNTrainer:
         print(" ")
 
     def learn_embedding(self, supervised=True, unsupervised=False, val_model='cvt', model_name=''
-                        , load_preprocessed=False,load_preprocessed_walks=False, write_msc=False, draw=False):
+                        , load_preprocessed=False,load_preprocessed_walks=False, write_msc=False
+                        , collect_features=False, draw=False
+                        , active_learning = True):
 
         supervised = not unsupervised
+        union_geomsc = self.number_images > 1
 
         print(" %%%%% creating geomsc feature graph ")
 
@@ -348,65 +355,76 @@ class MSCGNNTrainer:
         # add number id to name
         if val_model=='cvt':
 
+
+
             msc_graph_name = 'msc-feature-graph' + model_name\
                              + 'im-'+str(self.number_images)+ '_prs-' + str(self.persistence_values[self.pers_inf_idx]) \
                              + '_blur-' + str(self.blur_sigmas[blur])
 
 
             if load_preprocessed:
-                msc = GeoMSC_Union()
-                msc.read_from_file(msc_seg_path)
-                mscgnn = MSCGNN(msc=msc)
-                mscgnn.msc_feature_graph(load_preprocessed=True , multiclass=True
-                                         ,image=np.transpose(np.mean(image,axis=1)), X=image.shape[0], Y=image.shape[2]
-                                         , write_json_graph_path='./data', name=msc_graph_name)
+                geomsc = GeoMSC_Union() if union_geomsc else GeoMSC()
+                geomsc.read_from_file(msc_seg_path)
+                msc = geomsc
+                geomsc.geomsc = geomsc
+                mscgnn = MSCGNN(geomsc=geomsc)
+                im_copy = copy.deepcopy(image)
+                mscgnn.msc_feature_graph(load_preprocessed=True , multiclass=False, manually_select_training=True
+                                         ,image=np.transpose(np.mean(im_copy,axis=1))
+                                         , X=image.shape[0], Y=image.shape[2]
+                                         , collect_features=collect_features, write_json_graph_path='./data'
+                                         , name=msc_graph_name)
+                computed_features = mscgnn.features
 
 
             else:
 
                 msc = msc_collection[(self.persistence_values[self.pers_train_idx], self.blur_sigmas[blur])]
+                geomsc = GeoMSC(geomsc=msc)
+                if infer and union_geomsc:
+                    if union_geomsc:
+                        geomsc = GeoMSC_Union(msc, inference_msc)
 
-                if infer:
-                        msc_union = GeoMSC_Union(msc, inference_msc)
-                        #####msc_union.connect_union()
-                        msc = msc_union#.geomsc
+                    #else:
+                    #    msc = GeoMSC(geomsc=msc)
+                    #for i in range(self.persistence_cardinality[self.pers_train]):
+                    #    msc_i = msc_collection[(self.persistence_values[self.pers_train], self.blur_sigmas[blur])]
+                    #    msc_union.U(msc_i)
+                    #    msc=msc_union
 
-                        #for i in range(self.persistence_cardinality[self.pers_train]):
-                        #    msc_i = msc_collection[(self.persistence_values[self.pers_train], self.blur_sigmas[blur])]
-                        #    msc_union.U(msc_i)
-                        #    msc=msc_union
+                    print("pers cardinality: ", self.persistence_cardinality)
 
-                        print("pers cardinality: ", self.persistence_cardinality)
-
-                        if self.number_images > 2:
-                            image_msc_set = []
+                    if self.number_images > 2:
+                        image_msc_set = []
 
 
 
-                            for pidx, pers in enumerate(sorted(self.persistence_values)):#int(self.train_data_idx) + 1, int(self.inference_data_idx)):
-                                for i in range(self.number_images):
-                                    print("image ", i)
-                                    pers_cap = self.persistence_cardinality[pidx]
-                                    if pers_cap <= 0 or i == self.inference_data_idx:
-                                        continue
-                                    print(" >>>> ")
-                                    print("adding msc to union ", str(pers))
-                                    im_i, msc_collection_i, mask_i, segmentation_i = \
-                                        self.train_dataloader[i]
-                                    set_i = [im_i, msc_collection_i, mask_i, segmentation_i]
-                                    image_msc_set.append(set_i)
-                                    msc_i = msc_collection_i[(pers, self.blur_sigmas[blur])]
+                        for pidx, pers in enumerate(sorted(self.persistence_values)):#int(self.train_data_idx) + 1, int(self.inference_data_idx)):
+                            for i in range(self.number_images):
+                                print("image ", i)
+                                pers_cap = self.persistence_cardinality[pidx]
+                                if pers_cap <= 0 or i == self.inference_data_idx:
+                                    continue
+                                print(" >>>> ")
+                                print("adding msc to union ", str(pers))
+                                im_i, msc_collection_i, mask_i, segmentation_i = \
+                                    self.train_dataloader[i]
+                                set_i = [im_i, msc_collection_i, mask_i, segmentation_i]
+                                image_msc_set.append(set_i)
+                                msc_i = msc_collection_i[(pers, self.blur_sigmas[blur])]
 
-                                    msc_union.U( msc_i)
-                                    ######msc_union.connect_union()
-                                    msc = msc_union  # .geomsc
-                                    msc_union = msc_union
-                                    self.persistence_cardinality[pidx] = pers_cap - 1
-                                    # do inference union here
+                                msc_union.U( msc_i)
+                                ######msc_union.connect_union()
+                                msc = msc_union  # .geomsc
+                                msc_union = msc_union
+                                self.persistence_cardinality[pidx] = pers_cap - 1
+                                # do inference union here
 
-                mscgnn = MSCGNN(msc=msc, msc_collection=msc_collection)
-
-                mscgnn.msc_feature_graph(image=np.transpose(np.mean(image, axis=1), (1, 0)),
+                mscgnn = MSCGNN(msc=geomsc, msc_collection=msc_collection)
+                im_copy = copy.deepcopy(image)
+                mscgnn.msc_feature_graph(image=np.transpose(np.mean(im_copy, axis=1), (1, 0)),
+                                         multiclass=False,
+                                         manually_select_training=True,
                                          X=image.shape[0], Y=image.shape[2]
                                          , validation_samples=validation_samples,
                                          validation_hops=validation_hops
@@ -416,6 +434,10 @@ class MSCGNNTrainer:
                                          , test_graph=False, sigmoid=False
                                          , min_number_features=self.min_number_features
                                          ,number_features=self.number_features)
+
+                # for preserving feature information for second or new inference
+                computed_features = mscgnn.features
+
                 if write_msc:
                     msc.write_msc(msc_seg_path)
 
@@ -552,21 +574,66 @@ class MSCGNNTrainer:
                             , out_dim_2 = self.out_dim_2)
 
         if unsupervised and infer:
-            # if embedding graph made with test/train set the same (and named the same)
-            #if load_preprocessed is not None:
-            #    mscgnn = mscgnn.classify(embedding_prefix=embedding_name, MSCGNN_infer=mscgnn,
-            #                                       aggregator=aggregator, embedding_path_name=None #embedding_name
-            #                                       , trained_prefix=msc_graph_name, learning_rate=learning_rate)
-            #else:
-            #    # adjust classification to use mscgnn for inference with known
-            #    # gnn and get new inference mscgnn embedding.
+
             mscgnn = mscgnn.classify(MSCGNN_infer=mscgnn, MSCGNN=mscgnn,
                                                    embedding_path_name=None# embedding_name
                                                    , embedding_prefix=embedding_name, learning_rate=learning_rate,
                                                    aggregator=aggregator, supervised=supervised)
+
         #if supervised:
         G = mscgnn.get_graph()
         #if loading then no MSC to equate, does nothing
+        mscgnn.equate_graph(G)
+
+        if active_learning:
+            im_copy = copy.deepcopy(image)
+
+            # for when adding new msc for inference
+            #mscgnn = MSCGNN(msc=msc, msc_collection=msc_collection)
+
+            #mscgnn.compiled_features = computed_features
+
+            mscgnn.update_training_from_inference(image=np.transpose(np.mean(im_copy, axis=1), (1, 0)),
+                                         multiclass=False,
+                                         manually_select_training=False,
+                                         X=image.shape[0], Y=image.shape[2]
+                                         , validation_samples=validation_samples,
+                                         validation_hops=validation_hops
+                                         , test_samples=0, test_hops=0,
+                                         accuracy_threshold=self.msc_arc_accuracy_threshold
+                                         , write_json_graph_path='./data', name=msc_graph_name
+                                         , test_graph=False, sigmoid=False
+                                         , min_number_features=self.min_number_features
+                                         ,number_features=self.number_features)
+
+            print(' >>>> Re-running random walks for new context pairs')
+
+            random_walk_embedding(mscgnn.G, walk_length=walk_length, number_walks=number_walks,
+                                  out_file=walk_embedding_file)
+
+            if unsupervised:
+                mscgnn.unsupervised(aggregator=aggregator, env=args.env)
+            if supervised and not unsupervised:
+                mscgnn.supervised(aggregator=aggregator, env=args.env)
+
+            mscgnn.train(embedding_name=embedding_name, load_walks=walk_embedding_file
+                         , learning_rate=learning_rate, epochs=epochs, batch_size=self.batch_size
+                         , weight_decay=weight_decay, polarity=polarity
+                         , depth=depth, gpu=args.gpu, val_model=val_model, sigmoid=False
+                         , max_degree=self.max_node_degree, degree_l1=self.degree_l1, degree_l2=self.degree_l2,
+                         degree_l3=self.degree_l3
+
+                         , model_size=self.model_size
+                         , out_dim_1=self.out_dim_1
+                         , out_dim_2=self.out_dim_2)
+            if unsupervised and infer:
+                mscgnn = mscgnn.classify(MSCGNN_infer=mscgnn, MSCGNN=mscgnn,
+                                         embedding_path_name=None  # embedding_name
+                                         , embedding_prefix=embedding_name, learning_rate=learning_rate,
+                                         aggregator=aggregator, supervised=supervised)
+
+        G = mscgnn.get_graph()
+        # if loading then no MSC to equate, does nothing
         mscgnn.equate_graph(G)
 
         if infer:
@@ -575,8 +642,10 @@ class MSCGNNTrainer:
             #if load_preprocessed:
             #    G = mscgnn.get_graph()
             msc.equate_graph(G)
-            msc.invert_map()
-            msc_infered = msc.test_geomsc
+            msc_infered = msc
+            if union_geomsc:
+                geomsc.invert_map()
+                msc_infered = geomsc.test_geomsc
 
 
         msc_path_and_name = os.path.join(msc_seg_path,
@@ -678,9 +747,12 @@ class MSCGNNTrainer:
 
 
 # Experiment settings
-model_name = 'test_exclude_exterior'
+model_name = 'manual_select_from_1st_inference'
 
-other_models = ['multi2Pers_3-1_per-1e-4_1e-2_feat[1-3)_im4_wlkn-65-wlkl-3_acc-2.5', #best so far
+other_models = ['manual_select-disjoint_training_wlk-l3-n45_pers1e-8_Feats-polar-nomean',
+                'manual_select_training_pers1e-8_polarFeats',
+                'manual_select_training_pers1e-7',
+                'multi2Pers_3-1_per-1e-4_1e-2_feat[1-3)_im4_wlkn-65-wlkl-3_acc-2.5', #best so far
                 'multiPers2_4-2_per-1e-4_1e-2_feat[1-3)_im6_acc-2.5',
                 'multiPers3_4-1-2_per-1e-4_1e-3_1e-2_feat[1-3)_im7_acc-2.5',
                 'multiPers3_4-2-2_per-1e-4_1e-3_1e-2_feat[1-3)_im8_acc-2.5',
@@ -693,6 +765,8 @@ load_preprocessed = [False, True][0]
 load_preprocessed_walks = load_preprocessed
 
 write_msc = not load_preprocessed
+
+collect_features = not load_preprocessed#[False, True][0]
 
 test_param = [False, True][1]
 
@@ -707,4 +781,5 @@ mscgnn_learner.learn_embedding(val_model='cvt'#persistence_subset'
                 , load_preprocessed=load_preprocessed
                 , load_preprocessed_walks=load_preprocessed_walks
                 , draw=True, write_msc=write_msc
+                , collect_features = collect_features
                 , unsupervised=unsupervised            )

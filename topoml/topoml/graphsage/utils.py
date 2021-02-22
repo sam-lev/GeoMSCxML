@@ -119,13 +119,16 @@ def load_data(prefix='', positive_arcs = [], negative_arcs = [], normalize=True,
 
 def format_data(dual=None, features=None, node_id=None, id_map=None
                 , node_classes=None, train_or_test = '', scheme_required = True
-                , load_walks=False, normalize=True):
+                , load_walks=False, normalize=True, test_graph=False):
 
     #if not train_or_test:
     #sys.exit("must specify graph as train or test set")
-            
+    typeG = nx.Graph()
     if dual:
-        G = json_graph.node_link_graph(dual)
+        if type(dual) != type(typeG):
+            G = json_graph.node_link_graph(dual)
+        else:
+            G = dual
         if isinstance(G.nodes()[0], int):
             conversion = lambda n : int(n)
         else:
@@ -202,12 +205,20 @@ def format_data(dual=None, features=None, node_id=None, id_map=None
         else:
             G[edge[0]][edge[1]]['train_removed'] = False
 
-    if normalize and not feats is None:
+    if normalize and feats is not None and not test_graph:
         from sklearn.preprocessing import StandardScaler
         train_ids = np.array([id_map[n] for n in G.nodes() if G.node[n]['train']])
         train_feats = feats[train_ids]
         scaler = StandardScaler()
         scaler.fit(train_feats)
+        feats = scaler.transform(feats)
+
+    if normalize and feats is not None and test_graph:
+        from sklearn.preprocessing import StandardScaler
+        test_ids = np.array([id_map[n] for n in G.nodes() if G.node[n]['test']])
+        test_feats = feats[test_ids]
+        scaler = StandardScaler()
+        scaler.fit(test_feats)
         feats = scaler.transform(feats)
     
     if load_walks:
@@ -235,13 +246,14 @@ def run_random_walks(G, nodes, num_walks=N_WALKS):
             print("Done walks for", count, "nodes")
     return pairs
 
-def random_walk_embedding(G, walk_length, number_walks, out_file):
+def random_walk_embedding(G, walk_length, number_walks, out_file, load_graph=True):
     WALK_LEN = walk_length
     N_WALKS = number_walks
     #G_data = json.load(open(graph_file))
     #G = json_graph.node_link_graph(G_data)
-    G = json_graph.node_link_graph(G)
-    nodes = [n for n in G.nodes() if 'train' in G.node[n] or 'val' in G.node[n] and (G.node[n]['train'] or G.node[n]['val'])]
+    if load_graph:
+        G = json_graph.node_link_graph(G)
+    nodes = [n for n in G.nodes() if not G.node[n]["val"] and not G.node[n]["test"]]#or 'val' in G.node[n] and (G.node[n]['train'] or G.node[n]['val'])]
     print(len(nodes))
     G = G.subgraph(nodes)
     pairs = run_random_walks(G, nodes)
