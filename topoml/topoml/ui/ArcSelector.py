@@ -19,7 +19,7 @@ from skimage import morphology
 import samply
 
 # Local application imports
-from topoml.ui.colors import red, blue, green, orange, purple
+from topoml.ui.colors import red, blue, green, orange, purple, offIvory
 orange = red
 from topoml.image.utils import (
     bounding_box,
@@ -31,12 +31,78 @@ from topoml.image.utils import (
 from topoml.topology.utils import is_ridge_arc, is_valley_arc
 
 
+from matplotlib.widgets import LassoSelector
+from matplotlib.path import Path
+from matplotlib.colors import to_rgba
+
+
+class SelectFromCollection:
+    """Select indices from a matplotlib collection using `LassoSelector`.
+
+    Selected indices are saved in the `ind` attribute. This tool fades out the
+    points that are not part of the selection (i.e., reduces their alpha
+    values). If your collection has alpha < 1, this tool will permanently
+    alter the alpha values.
+
+    Note that this tool selects collection objects based on their *origins*
+    (i.e., `offsets`).
+
+    Parameters
+    ----------
+    ax : :class:`~matplotlib.axes.Axes`
+        Axes to interact with.
+
+    collection : :class:`matplotlib.collections.Collection` subclass
+        Collection you want to select from.
+
+    alpha_other : 0 <= float <= 1
+        To highlight a selection, this tool sets all selected points to an
+        alpha value of 1 and non-selected points to `alpha_other`.
+    """
+
+    def __init__(self, ax, collection, alpha_other=0.5):
+        self.canvas = ax.figure.canvas
+        self.collection = collection
+        self.alpha_other = alpha_other
+
+        self.xys = collection.get_offsets()
+        self.Npts = len(self.xys)
+
+        # Ensure that we have separate colors for each object
+        self.fc = collection.get_facecolors()
+        if len(self.fc) == 0:
+            raise ValueError('Collection must have a facecolor')
+        elif len(self.fc) == 1:
+            self.fc = np.tile(self.fc, (self.Npts, 1))
+
+        self.lasso = LassoSelector(ax, onselect=self.onselect)
+        self.ind = []
+
+    def onselect(self, verts):
+        path = Path(verts, closed=False)
+        self.ind = np.nonzero(path.contains_points(self.xys, radius=1.0))[0]
+        #self.fc[:, -1] = self.alpha_other
+        #self.fc[self.ind, -1] = 1
+        #self.collection.set_facecolors(self.fc)
+        #self.canvas.draw_idle()
+
+    def disconnect(self, fc):
+        #self.lasso.disconnect_events()
+        self.fc[:, -1] = 1
+        self.collection.set_facecolors(fc)
+        self.collection.set_alpha(0.5)
+        #self.canvas.draw_idle()
+
+
+
+
 def make_arc_id(a):
     return tuple(a.node_ids) + (len(a.line),)
 
 class ArcSelector(object):
     def __init__(
-            self, image=None, msc=None, selection_radius=10, valley=True, ridge=True, invert=False, kdtree=False
+            self, image=None, msc=None, selection_radius=4, valley=True 
+            , ridge=True, invert=False, kdtree=True
     ):
         # Needed for kdTree on large point sets:
         sys.setrecursionlimit(10000)
@@ -53,13 +119,19 @@ class ArcSelector(object):
             self.image, self.msc, self.selection_radius, self.invert
         )
 
-        self.in_color = orange
-        self.out_color = purple
+        self.in_color = red
+        self.out_color = blue
+        self.bg_color = purple
+
         self.in_arcs = set()
         self.out_arcs = set()
+        self.test_arcs = set()
+        self.train_arcs = set()
+
         self.out_pixels = set()
         self.arc_map = []
         self.arc_drawings = {}
+        self.arc_points = np.array([0,0])
         self.use_valley_arcs = valley
         self.use_ridge_arcs = ridge
 
@@ -87,11 +159,59 @@ class ArcSelector(object):
         distance, index = self.kdtree.query(point)
         return self.arc_map[index]
 
-    def launch_ui(self, xlims=None, ylims=None):
-        plt.ion()
-        self.fig = plt.figure()
-        plt.imshow(self.image, cmap=plt.cm.Greys_r, zorder=1)
 
+
+
+
+    def launch_ui(self, msc=None, xlims=None, ylims=None, use_inference = False):
+        if msc is not None:
+            self.msc = msc
+
+        if xlims is None or ylims is None and self.image is not None:
+            X = self.image.shape[0]
+            Y = self.image.shape[1]
+            xlims = [0, X]
+            ylims = [0, Y]
+
+        plt.ion()
+
+        if xlims is None or ylims is None:
+            subplot_kw = dict(xlim=(0, self.image.shape[1]), ylim=(self.image.shape[0], 0), autoscale_on=False)
+        if xlims is not None and ylims is not None:
+            subplot_kw = dict(xlim=(xlims[0], xlims[1]), ylim=(ylims[1], ylims[0]), autoscale_on=False)
+        self.fig, self.ax= plt.subplots(subplot_kw=subplot_kw) #figure()
+
+        arc_xpoints , arc_ypoints = [] , []
+        arc_points = []
+        self.scatter_points = self.ax.scatter(arc_xpoints,
+                                            arc_ypoints,
+                                            facecolor="ivory",
+                                            edgecolor="none",
+                                            s=1,
+                                            marker=",",
+                                            alpha=0.3,
+                                            zorder=1,
+            )
+
+
+        #self.ax.set_xlim(0, self.image.shape[1]) #plt.gca().set_xlim(
+        #self.ax.set_ylim(self.image.shape[0], 0)
+        #if xlims is not None:
+        #    self.ax.set_xlim(xlims[0], xlims[1])
+        #if ylims is not None:
+        #    self.ax.set_ylim(ylims[1], ylims[0])
+
+        if use_inference:
+            cmap = cm.get_cmap('seismic')
+            cmap.set_under('black')
+            cmap.set_bad('black')
+            # cmap.set_over('white')
+            #plt.set_cmap(cmap)
+
+            cmap_accurate = cm.get_cmap('cool')
+
+        plt.imshow(self.image, cmap=plt.cm.Greys_r, zorder=2) # cmap=plt.cm.Greys_r, #cmap=plt.cm.Greys_r,
+        c = 0
         for arc in self.msc.arcs:
             if (not self.use_ridge_arcs and is_ridge_arc(arc, self.msc)) or (
                 not self.use_valley_arcs and is_valley_arc(arc, self.msc)
@@ -100,23 +220,57 @@ class ArcSelector(object):
 
             arc_index = make_arc_id(arc)
             points = np.array(arc.line)
-            self.arc_drawings[arc_index] = plt.scatter(
+
+            arc_xpoints.append(points[:,0])
+            arc_ypoints.append(points[:,1])
+            for point in points:
+                arc_points.append(np.asarray(point))
+
+            old_offset = self.scatter_points.get_offsets()
+            new_offset = np.concatenate([old_offset, np.array(points)])
+            old_color = self.scatter_points.get_facecolors()
+
+            if c == 0:
+                new_color = np.concatenate([old_color, np.array(old_color)])
+                c+=1
+            else:
+                new_color = np.concatenate([old_color, np.array([old_color[0,:]])])
+
+            self.scatter_points.set_offsets(new_offset)#np.c_[points[:,0],points[:,1]])
+            self.scatter_points.set_facecolors(new_color)
+            #self.fig.canvas.draw()
+
+            color = "ivory"
+
+            if use_inference:
+                if not isinstance(arc.prediction, (int, np.integer)):
+                    if len(arc.prediction) == 3:
+                        label_color = cmap(0.5) if float(arc.prediction[2]) > 0.5 else cmap(float(arc.prediction[1]))
+                        pred = float(arc.prediction[2]) if float(arc.prediction[2]) > 0.5 else float(arc.prediction[1])
+                    else:
+                        label_color = cmap(float(arc.prediction[1]))
+                        pred = float(arc.prediction[1])
+                else:
+                    # print("pred ", arc.prediction)
+                    label_color = cmap(float(arc.prediction))
+                    pred = float(arc.prediction)
+                color = label_color
+                if pred <= 0.06 or pred >= 0.94:
+                    color = cmap_accurate(pred)
+
+            self.arc_drawings[arc_index] = self.ax.scatter(           ##### plt.scatter
                 points[:, 0],
                 points[:, 1],
-                facecolor="none",
+                facecolor=color,
                 edgecolor="none",
                 s=2,
                 marker=",",
+                alpha=0.3,
                 zorder=3,
             )
-            if arc_index in self.in_arcs:
-                self.arc_drawings[arc_index].set_facecolor(self.in_color)
-                self.arc_drawings[arc_index].set_visible(True)
-            elif arc_index in self.out_arcs:
-                self.arc_drawings[arc_index].set_facecolor(self.out_color)
-                self.arc_drawings[arc_index].set_visible(True)
-            else:
-                self.arc_drawings[arc_index].set_visible(False)
+        #np.c_[points[:, 0], points[:, 1]])
+        self.scatter_points.set_visible(False)
+        self.fig.canvas.draw()
 
         if self.use_ridge_arcs:
             arc_mask = make_mc_arc_mask(self.image, self.msc, False)
@@ -126,7 +280,7 @@ class ArcSelector(object):
                 vmin=0,
                 vmax=4,
                 interpolation="none",
-                alpha=0.8,
+                alpha=0.3,
                 zorder=2,
             )
         if self.use_valley_arcs:
@@ -137,47 +291,58 @@ class ArcSelector(object):
                 vmin=0,
                 vmax=4,
                 interpolation="none",
-                alpha=0.8,
+                alpha=0.3,
                 zorder=2,
             )
 
-        extrema_points = [[], [], []]
+        print(">>>> image shape: ", self.image.shape)
+        extrema_points = [[]] # append all 2-saddle to inner array for slicing
         for node in self.msc.nodes.values():
             x, y = node.xy
-            extrema_points[node.index].append([x, y])
+            extrema_points[0].append([x, y])
 
-        for i, color in enumerate([blue, green, red]):
-            xy = np.array(extrema_points[i])
-            plt.scatter(
-                xy[:, 0],
-                xy[:, 1],
-                facecolor=color,
-                edgecolor="none",
-                s=1,
-                marker=",",
-                zorder=4,
-            )
+        #for i in extrema_points:#.keys():# , color  enumerate([blue, green, red]):
+        color = green
+        xy = np.array(extrema_points) #[i])
+        self.ax.scatter(                           #plt.scatter
+            xy[:, 0],
+            xy[:, 1],
+            facecolor=color,
+            edgecolor="none",
+            s=4,
+            marker=",",
+            zorder=4,
+        )
 
-        plt.gca().set_xlim(0, self.image.shape[1])
-        plt.gca().set_ylim(self.image.shape[0], 0)
-        if xlims is not None:
-            plt.gca().set_xlim(xlims[0], xlims[1])
-        if ylims is not None:
-            plt.gca().set_ylim(ylims[1], ylims[0])
+        # add inference results of certain accuracy to training set
+        #if use_inference:
+        #    self.color_by_predictions()
 
-        self.fig.canvas.mpl_connect("button_press_event", self.on_click)
+        self.selector = SelectFromCollection(self.ax, self.scatter_points)
+        self.fig.canvas.mpl_connect("key_press_event", self.assign_class)
+        #self.fig.canvas.mpl_connect("button_press_event", self.on_click)
+
         plt.show(block=True)
 
         in_arcs = []
         out_arcs = []
+        test_arcs = []
+        train_arcs = []
         for arc in self.msc.arcs:
             index = make_arc_id(arc)
             if index in self.in_arcs:
                 in_arcs.append(arc)
             elif index in self.out_arcs:
                 out_arcs.append(arc)
+            elif index in self.test_arcs:
+                test_arcs.append(arc)
+            elif index in self.train_arcs:
+                train_arcs.append(arc)
 
-        return (in_arcs, out_arcs, np.array(list(self.out_pixels)))
+        #end of ui
+        return self.in_arcs, in_arcs, self.out_arcs, out_arcs, np.array(list(self.out_pixels)), test_arcs
+
+
 
     def write_image(self, filename):
         self.fig = plt.figure()
@@ -268,7 +433,7 @@ class ArcSelector(object):
             elif index in self.out_arcs:
                 out_arcs.append(arc)
 
-        return (in_arcs, out_arcs, np.array(list(self.out_pixels)))
+        return (self.in_arcs, out_arcs, np.array(list(self.out_pixels)))
     
     def make_to_scale_image(image_in, outputname, size=(1, 1), dpi=80):
         fig = plt.figure()
@@ -303,7 +468,7 @@ class ArcSelector(object):
                     points[:, 0],
                     points[:, 1],
                     facecolor= 'white',#self.in_color,
-                    alpha=None,
+                    alpha=0.5,
                     edgecolor="none",
                     s=5,
                     marker=",",
@@ -317,7 +482,7 @@ class ArcSelector(object):
                     points[:, 1],
                     facecolor= 'white',#self.out_color,
                     edgecolor="none",
-                    alpha=None,
+                    alpha=0.5,
                     s=5,
                     marker=",",
                     zorder=3,
@@ -333,7 +498,7 @@ class ArcSelector(object):
                 vmax=0,
                 norm=plt.Normalize(vmin=0, vmax=1),
                 interpolation="nearest",
-                alpha=None,
+                alpha=0.5,
                 zorder=2,
             )
         if self.use_valley_arcs:
@@ -344,7 +509,7 @@ class ArcSelector(object):
                 vmin=0,
                 vmax=0,
                 interpolation="nearest",
-                alpha=None,
+                alpha=0.5,
                 zorder=2,
             )
         """
@@ -555,33 +720,94 @@ class ArcSelector(object):
 
         in_arcs = []
         out_arcs = []
+        test_arcs = []
         for arc in self.msc.arcs:
             index = make_arc_id(arc)
             if index in self.in_arcs:
                 in_arcs.append(arc)
             elif index in self.out_arcs:
                 out_arcs.append(arc)
+            elif index in self.test_arcs:
+                test_arcs.append(arc)
 
-        return (in_arcs, out_arcs, np.array(list(self.out_pixels)))
+        return (in_arcs, out_arcs, np.array(list(self.out_pixels))), test_arcs
 
-    def toggle_arc(self, x, y, in_class=True):
+    def toggle_arc_lasso(self, x_points, y_points, event_key='1'):
+        in_class = event_key == '1'
+        out_class = event_key == '2'
+        remove_arcs = event_key == 'x'
+
+        min_indices = []
+        for x, y in zip(x_points,y_points): # no loop just x y event
+            pt = np.array([x, y])
+            min_index = self.get_closest_arc_index(pt)
+            min_indices.append(min_index)
+            if in_class:
+                if min_index in self.in_arcs:
+                    self.in_arcs.remove(min_index)
+                elif min_index in self.out_arcs:
+                    self.out_arcs.remove(min_index)
+                elif min_index in self.test_arcs:
+                    self.test_arcs.remove(min_index)
+                #else:
+                #    #print("added to positive labels")
+                self.in_arcs.add(min_index)
+            if out_class:
+                if min_index in self.out_arcs:
+                    self.out_arcs.remove(min_index)
+                elif min_index in self.in_arcs:
+                    self.in_arcs.remove(min_index)
+                elif min_index in self.test_arcs:
+                    self.test_arcs.remove(min_index)
+                #    #print("added to negative labels")
+                self.out_arcs.add(min_index)
+            if remove_arcs:
+                if min_index in self.out_arcs:
+                    #print("removed from negative labels")
+                    self.out_arcs.remove(min_index)
+                elif min_index in self.in_arcs:
+                    #print("removed from positive labels")
+                    self.in_arcs.remove(min_index)
+                elif min_index in self.test_arcs:
+                    self.test_arcs.remove(min_index)
+                self.test_arcs.add(min_index)
+        return min_indices                            # return single min_index
+
+    def toggle_arc_click(self, x, y, key = 1):
+        in_class = key == 1
+        min_indices = []
+        #for x, y in zip(x_points,y_points): # no loop just x y event
         pt = np.array([x, y])
         min_index = self.get_closest_arc_index(pt)
+        #min_indices.append(min_index)
         if in_class:
             if min_index in self.in_arcs:
+                #print("removed from positive labels")
                 self.in_arcs.remove(min_index)
             elif min_index in self.out_arcs:
+                #print("removed from negative labels")
                 self.out_arcs.remove(min_index)
             else:
+                #print("added to positive labels")
                 self.in_arcs.add(min_index)
-        else:
+        elif key == 2:
             if min_index in self.out_arcs:
+                #print("removed from negative labels")
                 self.out_arcs.remove(min_index)
             elif min_index in self.in_arcs:
+                #print("removed from positive labels")
                 self.in_arcs.remove(min_index)
             else:
+                #print("added to negative labels")
                 self.out_arcs.add(min_index)
-        return min_index
+        else:
+            if min_index in self.out_arcs:
+                #print("removed from negative labels")
+                self.out_arcs.remove(min_index)
+            elif min_index in self.in_arcs:
+                #print("removed from positive labels")
+                self.in_arcs.remove(min_index)
+        return min_indices                            # return single min_index
 
     def highlight_pixels(self, x, y):
         start_y = y - self.selection_radius
@@ -603,7 +829,7 @@ class ArcSelector(object):
             return
 
         if self.fat_mask[int(event.ydata), int(event.xdata)]:
-            selected_index = self.toggle_arc(
+            selected_index = self.toggle_arc_click(
                 event.xdata, event.ydata, event.button == 1
             )
             self.arc_drawings[selected_index].set_visible(
@@ -622,12 +848,110 @@ class ArcSelector(object):
                 bg_points[:, 0],
                 bg_points[:, 1],
                 edgecolor="none",
-                facecolor=self.out_color,
+                facecolor=self.bg_color,
                 s=1,
                 marker=",",
                 zorder=4,
             )
         self.fig.canvas.draw()
+
+    def assign_class(self, event):
+        xdata = self.selector.xys[self.selector.ind][:,0]
+        ydata = self.selector.xys[self.selector.ind][:, 1]
+
+        #print(" >>>> points: ")
+        #print(self.selector.xys[self.selector.ind])
+        #print(" x : ", self.selector.xys[self.selector.ind][:,0])
+        #if self.fat_mask[int(ydata), int(xdata)]:
+        selected_indices = self.toggle_arc_lasso(                         #           selected_index
+            self.selector.xys[self.selector.ind][:,0],self.selector.xys[self.selector.ind][:,1]
+            , event.key  #event.xdata
+        )
+        for selected_index in selected_indices:
+            #self.arc_drawings[selected_index].set_visible(
+            #    not self.arc_drawings[selected_index].get_visible()
+            #)
+            if event.key == '1':
+                self.arc_drawings[selected_index].set_facecolor(self.in_color)
+                self.arc_drawings[selected_index].set_alpha(0.3)
+            elif event.key == '2':
+                self.arc_drawings[selected_index].set_facecolor(self.out_color)
+                self.arc_drawings[selected_index].set_alpha(0.3)
+            elif event.key == 'x':
+                self.arc_drawings[selected_index].set_facecolor(offIvory)
+                self.arc_drawings[selected_index].set_alpha(0.3)
+
+        self.scatter_points.set_visible( False )                         # self.arc_drawings[selected_index].
+        #        not self.scatter_points(points[0],points[1]).get_visible()    # self.arc_drawings[selected_index].get_v
+        #    )
+        #if event.key == "1":
+        #    self.selector.disconnect(self.in_color)#self.scatter_points.set_facecolor(self.in_color)
+        #elif event.key == "2":
+        #    self.selector.disconnect(self.out_color)#self.scatter_points.set_facecolor(self.out_color)
+        #else:
+        #    self.highlight_pixels(int(event.xdata), int(event.ydata))
+
+        #if event.key == "1":
+        #    print(selector.xys[selector.ind])
+        #    selector.disconnect()
+        #    ax.set_title("")
+        self.fig.canvas.draw()
+
+    def color_by_predictions(self):
+
+        #####cmap = cm.get_cmap('bwr')
+        ####cmap.set_under('black')
+        ####cmap.set_bad('black')
+
+        # cmap.set_over('white')
+
+        ###plt.set_cmap(cmap)
+
+        #fig = plt.imshow(black_box, cmap=cmap, alpha=None, vmin=0)
+
+        for arc in self.arcs:
+
+
+            if not isinstance(arc.prediction, (int, np.integer)):
+                if len(arc.prediction) == 3:
+                    ####label_color = cmap(0.5) if float(arc.prediction[2]) > 0.5 else cmap(float(arc.prediction[1]))
+                    pred = float(arc.prediction[2])  if float(arc.prediction[2]) > 0.5 else float(arc.prediction[1])
+                else:
+                    ####label_color = cmap(float(arc.prediction[1]))
+                    pred = float(arc.prediction[1])
+            else:
+                # print("pred ", arc.prediction)
+                ####label_color = cmap(float(arc.prediction))
+                pred = float(arc.prediction)
+
+            #self.arc_drawings[selected_index].set_visible(
+            #    not self.arc_drawings[selected_index].get_visible()
+            #)
+
+            pt = np.array(arc.line[0])
+            min_index = self.get_closest_arc_index(pt)
+            if pred >= 0.93:
+                if min_index in self.in_arcs:
+                    self.in_arcs.remove(min_index)
+                elif min_index in self.out_arcs:
+                    self.out_arcs.remove(min_index)
+                self.in_arcs.add(min_index)
+            elif pred <= 0.07:
+                if min_index in self.out_arcs:
+                    self.out_arcs.remove(min_index)
+                elif min_index in self.in_arcs:
+                    self.in_arcs.remove(min_index)
+                self.out_arcs.add(min_index)
+            else:
+                if min_index in self.test_arcs:
+                    self.test_arcs.remove(min_index)
+                self.test_arcs.add(min_index)
+
+            ####self.arc_drawings[min_index].set_facecolor(label_color)
+
+        ####self.scatter_points.set_visible( False )                         # self.arc_drawings[selected_index].
+
+       ####self.fig.canvas.draw()
 
     def save_arcs(self, filename="arcs.csv", mode="a"):
         f = open(filename, mode)

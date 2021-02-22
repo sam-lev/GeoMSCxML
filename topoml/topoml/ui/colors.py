@@ -21,6 +21,8 @@ orange = "#ff7f00"
 
 yellow = "#ffff33"
 
+offIvory="#ffffa2"
+
 light_palette = [light_red, light_blue, light_green, light_purple, light_orange]
 orange = light_red
 bold_palette = [red, blue, green, purple, orange]
