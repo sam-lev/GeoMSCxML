@@ -1,0 +1,3 @@
+[submodule "topoml/DiffPool"]
+	path = topoml/DiffPool
+	url = https://github.com/RexYing/diffpool.git
