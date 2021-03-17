@@ -14,6 +14,8 @@ class SupervisedGraphsage(models.SampleAndAggregate):
     def __init__(self, num_classes,
             placeholders, features, adj, degrees,
             layer_infos, concat=True, aggregator_type="mean",
+                 jumping_knowledge=False,
+                 jump_type='pool',
                  name=''
                  ,model_size="small", sigmoid_loss=False, identity_dim=0,
                 **kwargs):
@@ -40,7 +42,7 @@ class SupervisedGraphsage(models.SampleAndAggregate):
         elif aggregator_type == "meanpool":
             self.aggregator_cls = MeanPoolingAggregator
         elif aggregator_type == "maxpool":
-            self.aggregator_cls = TwoMaxLayerPoolingAggregator
+            self.aggregator_cls = MaxPoolingAggregator #TwoMaxLayerPoolingAggregator
         elif aggregator_type == "gcn":
             self.aggregator_cls = GCNAggregator
         else:
@@ -64,6 +66,8 @@ class SupervisedGraphsage(models.SampleAndAggregate):
                 self.features = tf.concat([self.embeds, self.features], axis=1)
         self.degrees = degrees
         self.concat = concat
+        self.jumping_knowledge = jumping_knowledge
+        self.jump_type = jump_type
         self.num_classes = num_classes
         self.sigmoid_loss = sigmoid_loss
         self.dims = [(0 if features is None else features.shape[1]) + identity_dim]

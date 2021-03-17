@@ -46,6 +46,20 @@ class LocalSetup:
                 self.drive_training_msc_segmentation_path = os.path.join(self.project_base_path,"datasets","optics","drive","DRIVE","training","msc_seg")
                 self.stare_msc_segmentation_path = os.path.join(self.project_base_path, "datasets", "optics","stare", "msc_seg")
 
+                self.neuron_training_path = os.path.join(self.project_base_path,
+                                                         "datasets",
+                                                         "neuron2")
+
+                self.neuron_training_segmentation_path = os.path.join(self.project_base_path,
+                                                                      "datasets",
+                                                                      "neuron2",
+                                                                      "manual")
+
+                self.neuron_training_base_path = os.path.join(self.project_base_path,
+                                                              "datasets",
+                                                              "neuron2")
+
+
 
             ## Paths for SCI  ##
             ####################

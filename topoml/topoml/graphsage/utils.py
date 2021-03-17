@@ -37,7 +37,7 @@ def load_data(prefix='', positive_arcs = [], negative_arcs = [], normalize=True,
     total_nodes = 0
     val_count = 0
     unlabeled_nodes = 0
-
+    test_count = 0
     #if not train_or_test:
     #    sys.exit("must specify graph as train or test set")
 
@@ -58,6 +58,8 @@ def load_data(prefix='', positive_arcs = [], negative_arcs = [], normalize=True,
                 positive_sample_count+=1
             if G.node[node]['val']:
                 val_count+=1
+            if G.node[node]['test']:
+                test_count+=1
  
         if before == broken_count  and train_or_test == 'test' and require_scheme and not bool(np.sum(G.node[node]["label"])):
             G.remove_node(node)
@@ -91,7 +93,8 @@ def load_data(prefix='', positive_arcs = [], negative_arcs = [], normalize=True,
     print("Positive Samples: ", positive_sample_count)
     print("Validation Samples: ", val_count)
     print("Unlabeled samples: ", unlabeled_nodes )
-    
+
+    print("..test nodes: ", test_count)
     ## Make sure the graph has edge train_removed annotations
     ## (some datasets might already have this..)
     print("Loaded data.. now preprocessing..")
@@ -160,6 +163,7 @@ def format_data(dual=None, features=None, node_id=None, id_map=None
     total_nodes = 0
     unlabeled_nodes = 0
     val_count = 0
+    test_count = 0
     for node in G.nodes():
         total_nodes+=1
         before = broken_count
@@ -174,6 +178,8 @@ def format_data(dual=None, features=None, node_id=None, id_map=None
                 positive_sample_count+=1
             if G.node[node]['val']:
                 val_count+=1
+            if G.node[node]['test']:
+                test_count+=1
         #if before == broken_count and train_or_test and not G.node[node]['val']:
         #G.node[node]["train"] = label_scheme == 'train'
         #G.node[node]["test"] = label_scheme == 'test'
@@ -195,6 +201,7 @@ def format_data(dual=None, features=None, node_id=None, id_map=None
     print("..negative Samples: ", negative_sample_count)
     print("..validation samples: ", val_count)
     print("..unlabeled samples: ", unlabeled_nodes )
+    print("..test nodes: ", test_count)
     ## Make sure the graph has edge train_removed annotations
     ## (some datasets might already have this..)
     print("Loaded data.. now preprocessing..")
@@ -229,14 +236,14 @@ def format_data(dual=None, features=None, node_id=None, id_map=None
 
     return G, feats, id_map, walks, class_map, negative_sample_count, positive_sample_count
 
-def run_random_walks(G, nodes, num_walks=N_WALKS):
+def run_random_walks(G, nodes, num_walks=N_WALKS, walk_len = WALK_LEN):
     pairs = []
     for count, node in enumerate(nodes):
         if G.degree(node) == 0:
             continue
         for i in range(num_walks):
             curr_node = node
-            for j in range(WALK_LEN):
+            for j in range(walk_len):
                 next_node = random.choice(G.neighbors(curr_node))
                 # self co-occurrences are useless
                 if curr_node != node:
@@ -256,7 +263,7 @@ def random_walk_embedding(G, walk_length, number_walks, out_file, load_graph=Tru
     nodes = [n for n in G.nodes() if not G.node[n]["val"] and not G.node[n]["test"]]#or 'val' in G.node[n] and (G.node[n]['train'] or G.node[n]['val'])]
     print(len(nodes))
     G = G.subgraph(nodes)
-    pairs = run_random_walks(G, nodes)
+    pairs = run_random_walks(G, nodes, num_walks=number_walks, walk_len=walk_length)
     with open(out_file+'-walks.txt', "w") as fp:
         fp.write("\n".join([str(p[0]) + "\t" + str(p[1]) for p in pairs]))
     
@@ -268,7 +275,7 @@ if __name__ == "__main__":
     out_file = sys.argv[2]
     G_data = json.load(open(graph_file))
     G = json_graph.node_link_graph(G_data)
-    nodes = [n for n in G.nodes() if 'train' in G.node[n] or 'val' in G.node[n] and (G.node[n]['train'] or G.node[n]['val'])]
+    nodes = [n for n in G.nodes() if not G.node[n]["val"] and not G.node[n]["test"]]# [n for n in G.nodes() if 'train' in G.node[n] or 'val' in G.node[n] and (G.node[n]['train'] or G.node[n]['val'])]
     print(len(nodes))
     G = G.subgraph(nodes)
     pairs = run_random_walks(G, nodes)

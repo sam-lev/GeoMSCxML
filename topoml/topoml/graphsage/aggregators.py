@@ -120,13 +120,16 @@ class MaxPoolingAggregator(Layer):
     """ Aggregates via max-pooling over MLP functions.
     """
     def __init__(self, input_dim, output_dim, model_size="small", neigh_input_dim=None,
-            dropout=0., bias=False, act=tf.nn.relu, name=None, concat=False, **kwargs):
+            dropout=0., bias=False, act=tf.nn.relu, name=None, concat=False,
+            jumping_knowledge = False, **kwargs):
         super(MaxPoolingAggregator, self).__init__(**kwargs)
 
         self.dropout = dropout
         self.bias = bias
         self.act = act
         self.concat = concat
+        self.jumping_knowledge = jumping_knowledge
+
 
         if neigh_input_dim is None:
             neigh_input_dim = input_dim
@@ -139,7 +142,7 @@ class MaxPoolingAggregator(Layer):
         if model_size == "small":
             hidden_dim = self.hidden_dim = 256
         elif model_size == "big":
-            hidden_dim = self.hidden_dim = 768#1024
+            hidden_dim = self.hidden_dim = 1024
 
         self.mlp_layers = []
         self.mlp_layers.append(Dense(input_dim=neigh_input_dim,
@@ -175,8 +178,19 @@ class MaxPoolingAggregator(Layer):
         # [nodes * sampled neighbors] x [hidden_dim]
         h_reshaped = tf.reshape(neigh_h, (batch_size * num_neighbors, self.neigh_input_dim))
 
+        ## jumping knowledge applied here, concat each layer, not just neighbor
+        jumping_knowledge = []
         for l in self.mlp_layers:
             h_reshaped = l(h_reshaped)
+            if self.jumping_knowledge:
+                jumping_knowledge.append(h_reshaped)
+
+        if self.jumping_knowledge:
+            h_jump = jumping_knowledge[-1]
+            for idx, l_vec in enumerate(jumping_knowledge[::-1]):
+                h_jump = tf.concat([h_jump, jumping_knowledge[idx+1]], axis=1)
+            h_reshaped = h_jump
+
         neigh_h = tf.reshape(h_reshaped, (batch_size, num_neighbors, self.hidden_dim))
         neigh_h = tf.reduce_max(neigh_h, axis=1)
         
@@ -294,11 +308,11 @@ class TwoMaxLayerPoolingAggregator(Layer):
             name = ''
 
         if model_size == "small":
-            hidden_dim_1 = self.hidden_dim_1 = 512//2
-            hidden_dim_2 = self.hidden_dim_2 = 256//2
+            hidden_dim_1 = self.hidden_dim_1 = 512
+            hidden_dim_2 = self.hidden_dim_2 = 256
         elif model_size == "big":
-            hidden_dim_1 = self.hidden_dim_1 = 1024//2
-            hidden_dim_2 = self.hidden_dim_2 = 512//2
+            hidden_dim_1 = self.hidden_dim_1 = 1024
+            hidden_dim_2 = self.hidden_dim_2 = 512
 
         self.mlp_layers = []
         self.mlp_layers.append(Dense(input_dim=neigh_input_dim,

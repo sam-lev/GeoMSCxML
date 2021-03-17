@@ -31,7 +31,7 @@ from topoml.image.utils import (
 from topoml.topology.utils import is_ridge_arc, is_valley_arc
 
 
-from matplotlib.widgets import LassoSelector
+from matplotlib.widgets import LassoSelector, RectangleSelector
 from matplotlib.path import Path
 from matplotlib.colors import to_rgba
 
@@ -163,7 +163,7 @@ class ArcSelector(object):
 
 
 
-    def launch_ui(self, msc=None, xlims=None, ylims=None, use_inference = False):
+    def launch_ui(self, msc=None, xlims=None, ylims=None, use_inference = False, box_select = False, msc_arcs = None):
         if msc is not None:
             self.msc = msc
 
@@ -318,6 +318,18 @@ class ArcSelector(object):
         #if use_inference:
         #    self.color_by_predictions()
 
+        #if box_select:
+        #    # drawtype is 'box' or 'line' or 'none'
+        #    if msc_arcs is not None:
+        #        self.msc_arcs = msc_arcs
+        #   self.toggle_selector.RS = RectangleSelector(self.ax, self.line_select_callback,
+        #                                           drawtype='box', useblit=True,
+        #                                           button=[1, 3],  # disable middle button
+        #                                           minspanx=5, minspany=5,
+        #                                           spancoords='pixels',
+        #                                           interactive=True)
+        #    self.fig.canvas.mpl_connect('key_press_event', self.toggle_selector)
+        #else:
         self.selector = SelectFromCollection(self.ax, self.scatter_points)
         self.fig.canvas.mpl_connect("key_press_event", self.assign_class)
         #self.fig.canvas.mpl_connect("button_press_event", self.on_click)
@@ -328,19 +340,21 @@ class ArcSelector(object):
         out_arcs = []
         test_arcs = []
         train_arcs = []
+        test_arc_ids = []
         for arc in self.msc.arcs:
             index = make_arc_id(arc)
             if index in self.in_arcs:
                 in_arcs.append(arc)
             elif index in self.out_arcs:
                 out_arcs.append(arc)
-            elif index in self.test_arcs:
+            #elif index in self.train_arcs:
+            #    train_arcs.append(arc)
+            else:
                 test_arcs.append(arc)
-            elif index in self.train_arcs:
-                train_arcs.append(arc)
+                test_arc_ids.append(index)
 
         #end of ui
-        return self.in_arcs, in_arcs, self.out_arcs, out_arcs, np.array(list(self.out_pixels)), test_arcs
+        return self.in_arcs, in_arcs, self.out_arcs, out_arcs, np.array(list(self.out_pixels)), test_arcs, test_arc_ids
 
 
 
@@ -772,6 +786,82 @@ class ArcSelector(object):
                     self.test_arcs.remove(min_index)
                 self.test_arcs.add(min_index)
         return min_indices                            # return single min_index
+
+    def toggle_arc_box(self, x_points, y_points, ground_truth = None):
+
+        min_indices = []
+        for x, y in zip(x_points,y_points): # no loop just x y event
+            pt = np.array([x, y])
+            min_index = self.get_closest_arc_index(pt)
+            min_indices.append(min_index)
+            arc = self.msc_arcs[min_index]
+            gt_label = arc.ground_truth
+            if gt_label == 1:
+                if min_index in self.in_arcs:
+                    self.in_arcs.remove(min_index)
+                elif min_index in self.out_arcs:
+                    self.out_arcs.remove(min_index)
+                elif min_index in self.test_arcs:
+                    self.test_arcs.remove(min_index)
+                #else:
+                #    #print("added to positive labels")
+                self.in_arcs.add(min_index)
+
+                self.arc_drawings[min_index].set_facecolor(self.in_color)
+                self.arc_drawings[min_index].set_alpha(0.3)
+            if gt_label == 0:
+                if min_index in self.out_arcs:
+                    self.out_arcs.remove(min_index)
+                elif min_index in self.in_arcs:
+                    self.in_arcs.remove(min_index)
+                elif min_index in self.test_arcs:
+                    self.test_arcs.remove(min_index)
+                #    #print("added to negative labels")
+                self.out_arcs.add(min_index)
+
+                self.arc_drawings[min_index].set_facecolor(self.out_color)
+                self.arc_drawings[min_index].set_alpha(0.3)
+
+            self.scatter_points.set_visible(False)  # self.arc_drawings[selected_index].
+            #        not self.scatter_points(points[0],points[1]).get_visible()    # self.arc_drawings[selected_index].get_v
+            #    )
+            # if event.key == "1":
+            #    self.selector.disconnect(self.in_color)#self.scatter_points.set_facecolor(self.in_color)
+            # elif event.key == "2":
+            #    self.selector.disconnect(self.out_color)#self.scatter_points.set_facecolor(self.out_color)
+            # else:
+            #    self.highlight_pixels(int(event.xdata), int(event.ydata))
+
+            # if event.key == "1":
+            #    print(selector.xys[selector.ind])
+            #    selector.disconnect()
+            #    ax.set_title("")
+            self.fig.canvas.draw()
+        return min_indices
+
+    def line_select_callback(self, eclick, erelease):
+        """
+        Callback for line selection.
+
+        *eclick* and *erelease* are the press and release events.
+        """
+        x1, y1 = eclick.xdata, eclick.ydata
+        x2, y2 = erelease.xdata, erelease.ydata
+        x_set = range(np.min(x1, x2), np.max(x1,x2))
+        y_set = range(np.min(y1,y2) , np.max(y1,y2))
+        self.toggle_arc_box(x_set, y_set)
+        print(f"({x1:3.2f}, {y1:3.2f}) --> ({x2:3.2f}, {y2:3.2f})")
+        print(f" The buttons you used were: {eclick.button} {erelease.button}")
+
+    def toggle_selector(self, event):
+        print(' Key pressed.')
+        if event.key == 't':
+            if self.toggle_selector.RS.active:
+                print(' RectangleSelector deactivated.')
+                self.toggle_selector.RS.set_active(False)
+            else:
+                print(' RectangleSelector activated.')
+                self.toggle_selector.RS.set_active(True)
 
     def toggle_arc_click(self, x, y, key = 1):
         in_class = key == 1

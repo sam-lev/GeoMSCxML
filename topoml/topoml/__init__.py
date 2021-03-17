@@ -8,6 +8,9 @@ from topoml.topology.MSCSegmentation import MSCSegmentation
 from topoml.ml.MSCSample import MSCSample
 from topoml.ml.MSCLearningDataSet import MSCLearningDataSet
 
+#from topoml.graphsage.gnn import unsupervised
+#from topoml.graphsage.gnn import supervised
+
 __all__ = ['ArcNeuronTracer', 'PixelNeuronTracer', 'msc_gnn', 'mscnn_segmentation']
 
 __version__ = '0.0.0'

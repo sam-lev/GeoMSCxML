@@ -18,9 +18,13 @@ from topoml.image.utils import make_mc_arc_mask
 
 class MSCNode:
     def __init__(self):
-        self.arcs = []
+        self.arcs = set()
         self.z = 0
         self.degree = 0
+        self.xy = (0,0)
+        self.z = 0
+        self.index = None
+        self.cellid = None
 
     def read_from_line(self, line):
         tmplist = line.split(",")
@@ -32,9 +36,28 @@ class MSCNode:
         self.z = 0
 
     def add_arc(self, arc):
-        self.degree += 1
-        self.arcs.append(arc)
+        self.arcs.add(arc)
+        self.degree = len(self.arcs)
 
+class MLArc:
+    def __init__(self):
+        self.dim = 0
+        self.gid = 0
+        self.gid_map = {}
+
+    def __group_xy(self, lst):
+        for i in range(0, len(lst), 2):
+            yield tuple(lst[i : i + 2])
+
+    def read_ml_graph_geom_line(self, line, labeled=False):
+        tmplist = line.split(" ")
+        self.index = int(tmplist[0])
+        self.gid = self.index
+        self.dim = int(tmplist[1])
+        self.line = [
+                i for i in self.__group_xy([float(i) for i in tmplist[2:]])
+            ] #read the rest of the the points in the arc as xy tuples
+        self.gid_map[self.gid] = self.line
 
 class MSCArc:
     def __init__(self):
@@ -47,6 +70,11 @@ class MSCArc:
         self.key = None
         self.test = None
 
+        self.dim = 0
+        self.gid = 0
+        self.gid_map = {}
+        self.ground_truth = 0
+
         self.ogKey = None
         self.ogIndex =None
         self.ogNodeIds = None
@@ -54,6 +82,8 @@ class MSCArc:
         self.intersection_arc = 0
 
         self.exterior = 0
+
+        self.node_ids = []
 
     def __group_xy(self, lst):
         for i in range(0, len(lst), 2):
@@ -74,6 +104,8 @@ class MSCArc:
                 i for i in self.__group_xy([float(i) for i in tmplist[3:]])
             ] #read the rest of the the points in the arc as xy tuples
 
+
+
 class GeoMSC:
     def __init__(self, geomsc=None):
         self.nodes = {}
@@ -88,6 +120,8 @@ class GeoMSC:
         self.z = 0
         self.geomsc_dict = {}
         self.geomsc_dict[self.z] = geomsc
+
+        self.gid_map = {}
 
         self.max_degree = 0
 
@@ -139,6 +173,107 @@ class GeoMSC:
             a.ogNodeIds = a.node_ids
 
             self.arc_dict[key] = a
+
+    def read_from_geo_file(self, fname_base, labeled=False):
+        nodesname = fname_base + ".mlg_nodes.txt"
+        arcsname = fname_base + ".mlg_edges.txt"
+        geoname = fname_base + ".mlg_geom.txt"
+        #node_file = open(nodesname, "r")
+        #nodes_lines = node_file.readlines()
+        #node_file.close()
+        #for l in nodes_lines:
+        #    n = MSCNode()
+        #    n.read_from_line(l)
+        #    self.nodes[n.cellid] = n
+        geo_file = open(geoname, "r")
+        geo_lines = geo_file.readlines()
+        geo_file.close()
+        cellid = 0
+        arcid = 0
+        for l in geo_lines:
+            mla = MLArc()
+            mla.read_ml_graph_geom_line(l, labeled)
+            if mla.dim == 1:
+                a = MSCArc()
+                a.line = mla.line
+                a.index = arcid
+                arcid += 1
+                self.gid_map[mla.gid] = a
+            if mla.dim == 0:
+                n = MSCNode()
+                n.xy = mla.line[0]
+                n.cellid = cellid
+                cellid += 1
+                self.gid_map[mla.gid] = n
+        edge_file = open(arcsname, "r")
+        edge_lines = edge_file.readlines()
+        edge_file.close()   # pull node since reading line /dual graph
+        for l in edge_lines:
+            tmplist = l.split(' ')
+            node = self.gid_map[int(tmplist[0])]
+            arc_1 = self.gid_map[int(tmplist[1])]
+            arc_2 = None
+
+            node.add_arc(arc_1)
+            node.index = arc_1.index
+            arc_1.node_ids.append(node.cellid)
+            arc_1.node_ids = list(set(arc_1.node_ids))
+            if int(tmplist[2]) != -1:
+                arc_2 = self.gid_map[int(tmplist[2])]
+                node.add_arc(arc_2)
+                arc_2.node_ids.append(node.cellid)
+                arc_2.node_ids = list(set(arc_2.node_ids))
+
+            self.nodes[node.cellid] = node
+
+
+            if node.degree > self.max_degree:
+                self.max_degree = node.degree
+
+            arc_1.nodes.append(node)
+            arc_1.nodes = list(set(arc_1.nodes))
+            if int(tmplist[2]) != -1:
+                arc_2.nodes.append(node)
+                arc_2.nodes = list(set(arc_2.nodes))
+
+            #self.arcs.append(arc_1)
+
+            key = self.make_arc_id(arc_1)
+            arc_1.key = key
+
+            arc_1.ogKey = key
+            arc_1.ogIndex = arc_1.index
+            arc_1.ogNodeIds = arc_1.node_ids
+
+            self.arc_dict[key] = arc_1
+            if arc_2 is not None:
+                key = self.make_arc_id(arc_2)
+                arc_2.key = key
+
+                arc_2.ogKey = key
+                arc_2.ogIndex = arc_2.index
+                arc_2.ogNodeIds = arc_2.node_ids
+
+                self.arc_dict[key] = arc_2
+                #self.arcs.append(arc_2)
+        self.arcs = list(self.arc_dict.values())
+
+    def read_labels_from_file(self, file = None):
+        label_file = open(file, "r")
+        label_lines = label_file.readlines()
+        label_file.close()
+        arcs = []
+        #print(self.gid_map.keys())
+        for gid, l in enumerate(label_lines):
+            tmplist = l.split(' ')
+            label = 1. if int(tmplist[0]) == 1 else 0.
+            arc = self.gid_map[gid]
+            #arc = self.arc_dict[arc.key]
+            arc.ground_truth = label
+            arc.label_accuracy = label
+            self.arc_dict[arc.key] = arc
+            #arcs.append(arc)
+        self.arcs = list(self.arc_dict.values())
 
     def build_node_map(self):
         self.node_map = {}
@@ -233,6 +368,14 @@ class GeoMSC:
             write_edge_file(msc.arcs)
             write_node_file(msc.nodes)
 
+    def write_arc_predictions(self, filename, msc=None):
+
+
+        self.msc_pred_file = filename + ".preds.txt"
+        pred_file = open(self.msc_pred_file,"w+")
+        for arc in self.arcs:
+            pred_file.write(str(arc.index)+",")
+            pred_file.write(str(arc.prediction) + "\n")
 
 
     def draw_segmentation(self,  X, Y, filename, ridge=True, valley=True
@@ -286,26 +429,39 @@ class GeoMSC:
             #elif type=='partitions':
             #    label_color = cmap(0.1) if arc.partition=="train" else cmap(0.4) if arc.partition=="val" else cmap(0.9)
             else:
-                if not isinstance(arc.prediction, (int, np.integer)):
+                if isinstance(arc.prediction,
+                              (int, np.integer)) or isinstance(arc.prediction, (float, np.float)):
+                    label_color = cmap(float(arc.prediction))
+                else:
                     if len(arc.prediction) == 3:
                         label_color = cmap(0.5) if float(arc.prediction[2]) > 0.5 else cmap(float(arc.prediction[1]))
                     else:
                         label_color = cmap(float(arc.prediction[1]))
-                else:
-                    #print("pred ", arc.prediction)
-                    label_color = cmap(float(arc.prediction))
+
             if original_image is not None:
                 x = 1 if invert else 0
                 y = 0 if invert else 1
-                for p in np.array(arc.line):
-                    mapped_image[int(p[x]), int(p[y]), 0] = int(label_color[0]*255)
-                    mapped_image[int(p[x]), int(p[y]), 1] = int(label_color[1]*255)
-                    mapped_image[int(p[x]), int(p[y]), 2] = int(label_color[2]*255)
+                if len(mapped_image.shape) == 2:
+                    #arc.label_accuracy = 0.6
+                    for p in np.array(arc.line):
+                        mapped_image[int(p[x]), int(p[y])] = int(label_color[0] * 255)
+                        mapped_image[int(p[x]), int(p[y])] = int(label_color[1] * 255)
+                        mapped_image[int(p[x]), int(p[y])] = int(label_color[2] * 255)
 
-                    msc_ground_seg_color = cmap(arc.label_accuracy)
-                    label_map_image[int(p[x]), int(p[y]), 0] = int(msc_ground_seg_color[0] * 255)
-                    label_map_image[int(p[x]), int(p[y]), 1] = int(msc_ground_seg_color[1] * 255)
-                    label_map_image[int(p[x]), int(p[y]), 2] = int(msc_ground_seg_color[2] * 255)
+                        msc_ground_seg_color = cmap(arc.label_accuracy)
+                        label_map_image[int(p[x]), int(p[y])] = int(msc_ground_seg_color[0] * 255)
+                        label_map_image[int(p[x]), int(p[y])] = int(msc_ground_seg_color[1] * 255)
+                        label_map_image[int(p[x]), int(p[y])] = int(msc_ground_seg_color[2] * 255)
+                else:
+                    for p in np.array(arc.line):
+                        mapped_image[int(p[x]), int(p[y]), 0] = int(label_color[0]*255)
+                        mapped_image[int(p[x]), int(p[y]), 1] = int(label_color[1]*255)
+                        mapped_image[int(p[x]), int(p[y]), 2] = int(label_color[2]*255)
+
+                        msc_ground_seg_color = cmap(arc.label_accuracy)
+                        label_map_image[int(p[x]), int(p[y]), 0] = int(msc_ground_seg_color[0] * 255)
+                        label_map_image[int(p[x]), int(p[y]), 1] = int(msc_ground_seg_color[1] * 255)
+                        label_map_image[int(p[x]), int(p[y]), 2] = int(msc_ground_seg_color[2] * 255)
             #print(label_color, " COLOR")
 
         # plt.gca().set_axis_off()
@@ -332,11 +488,17 @@ class GeoMSC:
         else:
             img = img
         if original_image is not None:
-            Img = Image.fromarray(np.transpose(mapped_image, (0, 1, 2)).astype('uint8'))  # .astype(np.float32))#mapped_img)
+            if len(mapped_image.shape) != 2:
+                map_im = np.transpose(mapped_image, (0, 1, 2))
+                lab_map_im = np.transpose(label_map_image, (0, 1, 2))
+            else:
+                map_im =mapped_image
+                lab_map_im = label_map_image
+            Img = Image.fromarray(map_im.astype('uint8'))  # .astype(np.float32))#mapped_img)
             Img.save(filename + 'MAP.' + filename.split('.')[-1])
 
             Img = Image.fromarray(
-                np.transpose(label_map_image, (0, 1, 2)).astype('uint8'))  # .astype(np.float32))#mapped_img)
+                lab_map_im.astype('uint8'))  # .astype(np.float32))#mapped_img)
             Img.save(filename + 'MAP_groundseg.' + filename.split('.')[-1])
 
         plt.close()
@@ -355,6 +517,17 @@ class GeoMSC:
             if G.node[node]["prediction"] is not None:
                 arc.prediction = G.node[node]["prediction"]
 
+                if isinstance(arc.prediction,
+                                  (int, np.integer)) or isinstance(arc.prediction, (float, np.float)):
+                    # if len(arc.prediction) == 3:
+                    #    pred = cmap(0.5) if float(arc.prediction[2]) > 0.5 else cmap(float(arc.prediction[1]))
+                    # else:
+                    arc.prediction = float(arc.prediction)
+                else:
+                    # print("pred ", arc.prediction)
+                    arc.prediction = float(arc.prediction[1])
+            self.arc_dict[arc.key] = arc
+
 
 class GeoMSC_Union(GeoMSC):
     def __init__(self, geomsc1=None, geomsc2=None, z=1):
@@ -366,7 +539,7 @@ class GeoMSC_Union(GeoMSC):
         self.max_arc_index = -1
         self.max_node_id = -1
 
-        super(GeoMSC_Union, self).__init__()
+        super().__init__() #GeoMSC_Union, self
 
 
         self.union_key_dict = {}
@@ -814,7 +987,7 @@ class GeoMSC_Union(GeoMSC):
         self.max_arc_index = self.max_arc_index_2
 
 
-
+        self.geomsc = self
         #self.geomsc.arcs = self.arcs
         # self.geomsc.arc_dict = self.arc_dict
 

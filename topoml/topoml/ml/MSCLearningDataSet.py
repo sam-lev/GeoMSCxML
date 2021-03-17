@@ -6,6 +6,8 @@ import shutil
 import tarfile
 import zipfile
 import imageio
+from skimage import io
+import rawpy
 #from torch.utils.data import Dataset
 import numpy as np
 #internal imports
@@ -24,6 +26,117 @@ class MSCLearningDataSet:
             self.validation_set = validation_set
             self.training_set = training_set
             self.test_set = test_set
+            self.data_array = []
+
+
+        def __getitem__(self, index):
+            sample = [x for x in self.data_array[index]]  # torch.FloatTensor(x)
+            """if self.do_transform:
+                v_gen = RandomVerticalFlipGenerator()
+                h_gen = RandomHorizontalFlipGenerator()
+                t = Compose([
+                    v_gen,
+                    RandomVerticalFlip(gen=v_gen),
+                    h_gen,
+                    RandomHorizontalFlip(gen=h_gen),
+                ])
+                sample = t(sample)"""
+            return sample
+
+        def __len__(self):
+            return len(self.data_array)
+
+        def read_images(self, filetype, dest_folder, color_invert=False, dim_invert = False):
+            # zip_ref = zipfile.ZipFile('DRIVE.zip', 'r')
+            # zip_ref.extractall('datasets/drive')
+            # zip_ref.close()
+            if filetype != 'raw':
+                all_images = []
+                sorted_items = sorted(os.listdir(dest_folder))
+                for item in sorted_items:
+                    if dest_folder[-1] != '/':
+                       dest_folder = dest_folder+"/"
+                    if item.endswith(filetype):
+                        img = imageio.imread(dest_folder + item)
+                        if len(img.shape) == 3:
+                            img = np.pad(img, ((12, 12), (69, 70), (0, 0)), mode='constant')
+                        else:
+                            img = np.pad(img, ((12, 12), (69, 70)), mode='constant')
+                        #img = resize_img(img)
+                        img = img / 255.
+                        img = img.astype(np.float32)
+                        if len(img.shape) == 2:
+                            img = img.astype(np.float32)
+                            img = np.expand_dims(img, axis=2)
+                        all_images.append(img)
+                        #print("drive read im shape ", img.shape)
+            else:
+                all_images = []
+                sorted_items = sorted(os.listdir(dest_folder))
+                for item in sorted_items:
+                    if not item.endswith('.raw'):
+                        continue
+                    if dest_folder[-1] != '/':
+                       dest_folder = dest_folder+"/"
+                    print(dest_folder + item)
+
+                    path = dest_folder+item
+
+                    #raw = rawpy.imread(path)
+                    #image = raw.postprocess()
+                    image = np.fromfile(dest_folder+item,dtype='float32')#, sep="")
+                    print("shape im: ", image.shape)
+                    X = int(path.split("_")[-2])
+                    Y = int(path.split("_")[-1].split('.')[0])
+                    if dim_invert:
+                        xtemp = X
+                        X = Y
+                        Y = xtemp
+
+
+                    image = np.reshape(image, (X,Y))
+
+                    #if len(image.shape) == 2:
+                    #    image = image.astype(np.float32)
+                    #    image = np.expand_dims(img, axis=2)
+
+                    #if dim_invert:
+                    #    image = np.transpose(image, [1,0])
+
+                    if color_invert:
+                        mask = np.ones(image.shape)
+                        #min_val = np.min(image)
+                        #mask_up = mask + min_val
+                        image = mask - image + 0.0000000001
+                        #import cv2
+                        #image = cv2.bitwise_and(image,image)#(cv2.bitwise_not(image))
+                        #image = cv2.bitwise_and(image, mask_not)
+                        #image[image <= 0] = 0.00000001
+                    #image.astype('float32')
+
+                    #import matplotlib.pyplot as plt
+                    #plt.imshow(image, cmap="gray")
+                    #plt.show()
+                    #image.tofile(dest_folder+item+'.tiff')
+                    all_images.append(image)
+                    #if invert_image:
+                    #    raw_image = invert(raw_image)
+                    #f write_path:
+                    #    raw_path = os.path.join(write_path.rsplit(".", 1)[0], 'raw_images', img_name)
+                    #else:
+                    #    raw_path = image_filename.rsplit('/', 1)[1].rsplit('.', 1)[0]
+                    #image, fname_raw = blur_and_save(raw_image, raw_path + 'PERS' + str(persistence), blur_sigma=blur_sigma,
+                    #                                 grey_scale=grey_scale)
+
+            return all_images
+
+        def transpose_first_index(self, x, with_hand_seg=False):
+            if not with_hand_seg:
+                x2 = (np.transpose(x[0], [2, 0, 1]), np.transpose(x[1], [2, 0, 1]), np.transpose(x[2], [2, 0, 1]))
+            else:
+                x2 = (np.transpose(x[0], [2, 0, 1]), x[1], np.transpose(x[2], [2, 0, 1]),
+                      np.transpose(x[3], [2, 0, 1]))
+            return x2
 
 
 # Dataset class for the retina dataset
@@ -298,3 +411,48 @@ class MSCRetinaDataset(MSCLearningDataSet):#Dataset):
                                              stare_mask[:number_images] + drive_training_mask[:number_images] + drive_test_mask[:number_images],
                                              stare_segmentation[:number_images] + drive_training_segmentations[:number_images] + drive_test_segmentation[:number_images]))
         return self.retina_array
+
+class Neuron2dDataSet(MSCLearningDataSet):
+
+    def __init__(self, data_array=None, dataset='neuron2', split='train', do_transform=False
+                 , with_hand_seg=False, shuffle=True, dim_invert = False):
+        super().__init__()
+
+        self.dataset = dataset
+        self.dim_invert = dim_invert
+        #self.with_hand_seg = with_hand_seg
+        if data_array is not None:
+            self.data_array = data_array
+        else:
+            self.data_array = self._get_neuron_data()
+        #if data_array is not None:
+        #indexes_this_split = get_split(np.arange(len(data_array), dtype=np.int), split, shuffle=shuffle)
+        #self.data_array = [self.transpose_first_index(data_array[i], self.with_hand_seg) for i in
+        #                     indexes_this_split]
+        #self.split = split
+        #self.do_transform = do_transform
+
+
+    def get_neuron_data(self):
+        return self.data_array
+
+    def _get_neuron_data(self, number_images=None):
+
+        data_folder = "/home/sam/Documents/PhD/Research/GeoMSCxML/datasets/" + str(self.dataset)
+
+        images = super().read_images(filetype='raw', dest_folder=data_folder,color_invert=False, dim_invert=self.dim_invert)
+        msc_list = images
+        mask= [None]
+        training_msc_list = [None]
+
+        if number_images is None:
+            self.data_array = list(zip(images,
+                                       msc_list,
+                                       mask,
+                                       training_msc_list))
+        else:
+            self.data_array = list(zip(images[:number_images],
+                                       msc_list,
+                                       mask,
+                                       training_msc_list))
+        return self.data_array

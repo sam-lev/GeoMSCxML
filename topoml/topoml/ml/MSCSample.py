@@ -5,7 +5,11 @@ import samply
 import scipy.stats
 import json
 from networkx.readwrite import json_graph
+from sklearn.metrics.pairwise import cosine_similarity
 
+from memory_profiler import profile
+
+import time
 #local imports
 from topoml.ui.ArcSelector import ArcSelector
 from topoml.topology.utils import (
@@ -16,6 +20,7 @@ from topoml.topology.utils import (
 from topoml.ml.utils import gaussian_fit
 
 from topoml.image.utils import warp_polar
+
 
 
 from topoml.image.feature import (
@@ -37,7 +42,9 @@ from topoml.topology.geometric_msc import GeoMSC
 
 class MSCSample():
     def __init__(self, msc=None, geomsc=None, msc_collection=None, image=None
-                 , features={}, labeled_segmentation=None, use_inference = None, ridge=True, valley=True, select_label=False):
+                 , features={}, labeled_segmentation=None, use_inference = None, ridge=True, valley=True, select_label=False,
+                 union_graphs = False,
+                 use_ground_truth = False):
 
         self.msc = msc if msc is not None else geomsc
         self.geomsc = geomsc if geomsc is not None else msc
@@ -61,6 +68,14 @@ class MSCSample():
 
         self.use_inference = use_inference
         self.compiled_features = None
+
+        self.selected_positive_arc_ids = set()
+        self.selected_negative_arc_ids = set()
+        self.selected_positive_arcs = set()
+        self.selected_negative_arcs = set()
+        self.selected_test_arcs = set()
+        self.union_graphs = union_graphs
+        self.use_ground_truth = use_ground_truth
 
     def assign_msc(self, msc):
         self.msc = msc
@@ -131,7 +146,7 @@ class MSCSample():
         self.labeled_msc = self.msc
         return self.msc
 
-    def sort_labeled_arcs(self, msc=None, geomsc=None, accuracy_threshold=0.1, bin=[]):
+    def sort_labeled_arcs(self, msc=None, geomsc=None, accuracy_threshold=0.1, bin=[], map_labels=False):
         if msc is not None:
             self.msc = msc
         if geomsc is not None:
@@ -144,10 +159,23 @@ class MSCSample():
         self.negative_arcs = set()
 
         for arc in self.msc.arcs:
-            if arc.label_accuracy >= 1.0-accuracy_threshold:
+            if map_labels:
+                if arc.label_accuracy >= 1.0-accuracy_threshold:
+                    self.positive_arc_ids.add(self.msc.make_arc_id(arc))
+                    self.positive_arcs.add(arc)
+                else:
+                    self.negative_arc_ids.add(self.msc.make_arc_id(arc))
+                    self.negative_arcs.add(arc)
+            elif self.use_ground_truth:
+                if arc.label_accuracy > 0:
+                    self.positive_arc_ids.add(self.msc.make_arc_id(arc))
+                    self.positive_arcs.add(arc)
+                else:
+                    self.negative_arc_ids.add(self.msc.make_arc_id(arc))
+                    self.negative_arcs.add(arc)
+            else:
                 self.positive_arc_ids.add(self.msc.make_arc_id(arc))
                 self.positive_arcs.add(arc)
-            else:
                 self.negative_arc_ids.add(self.msc.make_arc_id(arc))
                 self.negative_arcs.add(arc)
         print("positive arcs: ", len(self.positive_arc_ids))
@@ -155,7 +183,8 @@ class MSCSample():
         return (self.positive_arc_ids, self.negative_arc_ids)
 
     def sample_graph_neighborhoods(self, X, Y, msc=None
-                                   , accuracy_threshold=0.1, count=2, rings=5, seed=0
+                                   , accuracy_threshold=0.1, count=2, rings=5, seed=0,
+                                   map_labels=False
                                    , validation=False, test=False):
         np.random.seed(seed)
         hypercube = samply.hypercube.cvt(count, 2)
@@ -211,7 +240,7 @@ class MSCSample():
                     arc_set.remove(arc_key)
         """
         #if not self.select_label:
-        self.sort_labeled_arcs(accuracy_threshold=accuracy_threshold)
+        self.sort_labeled_arcs(accuracy_threshold=accuracy_threshold, map_labels=map_labels)
 
         print("map output arc ")
         pos_arcs = self.positive_arc_ids if not self.select_label else self.selected_positive_arcs
@@ -415,14 +444,16 @@ class MSCSample():
 
     def cosine_similarity(self, a1, a2):
         min_len = min(len(a1), len(a2))
-        uv_x = np.transpose(np.array(a1)[:,0][0:min_len]).dot(np.array(a2)[:,0][0:min_len])
-        uv_y = np.transpose(np.array(a1)[:,1][0:min_len]).dot(np.array(a2)[:,1][0:min_len])
-        uv = uv_x + uv_y
-        mag = np.linalg.norm(np.array(a1)) * np.linalg.norm(np.array(a2))
-        cos_sim = uv/mag
-        return float(cos_sim)
+        #uv_x = np.transpose(np.array(a1)[:,0][0:min_len]).dot(np.array(a2)[:,0][0:min_len])
+        #uv_y = np.transpose(np.array(a1)[:,1][0:min_len]).dot(np.array(a2)[:,1][0:min_len])
+        #uv = uv_x + uv_y
+        #mag = np.linalg.norm(np.array(a1)) * np.linalg.norm(np.array(a2))
+        #cos_sim = uv/mag
+        return cosine_similarity(a1,a2)#np.array(a1),np.array(a2))#[:][0:min_len], np.array(a2)[:][0:min_len])#float(cos_sim)
 
+    @profile
     def set_default_features(self, image=None, images=None,min_number_features=1, number_features = 5):
+
         if image is not None:
             self.image = image
         self.images = images if images is not None else {}
@@ -472,8 +503,8 @@ class MSCSample():
         self.images["sobel"] = sobel_filter(self.image)
 
         # second derivatives
-        #print("lablacian")
-        #self.images["laplacian"] = laplacian_filter(self.image)
+        print("lablacian")
+        self.images["laplacian"] = laplacian_filter(self.image)
         for i in range(min_number_features, number_features):
             pow1 = 2 ** (i - 1)
             pow2 = 2 ** i
@@ -488,15 +519,15 @@ class MSCSample():
             print("min/max: ", i)
             self.images["min_{}".format(i)] = minimum_filter(self.image, i)
             self.images["max_{}".format(i)] = maximum_filter(self.image, i)
-            #print("gauss: ", i)
-            #self.images["gauss_{}".format(pow2)] = gaussian_blur_filter(
-            #    self.image, pow2
-            #)
+            print("gauss: ", i)
+            self.images["gauss_{}".format(pow2)] = gaussian_blur_filter(
+                self.image, pow2
+            )
 
-            #print("delta gauss: ",i)
-            #self.images[
-            #    "delta_gauss_{}_{}".format(pow1, pow2)
-            #] = difference_of_gaussians_filter(self.image, pow1, pow2)
+            print("delta gauss: ",i)
+            self.images[
+                "delta_gauss_{}_{}".format(pow1, pow2)
+            ] = difference_of_gaussians_filter(self.image, pow1, pow2)
 
         print("map to polar")
         middle = lambda x: (0.5 * x[0], 0.5 * x[1])
@@ -514,7 +545,13 @@ class MSCSample():
         #    if name != "identity":
         #        self.kernel_stack = np.vstack((self.kernel_stack, im))
 
-    def compile_features(self, selection=None, return_labels=False, images=None, min_number_features=1, number_features=5):
+    @profile
+    def compile_features(self, selection=None, return_labels=False, images=None,
+                         min_number_features=1, number_features=5):
+
+        start_time = time.time()
+
+
         if images is not None:
             self.images = images
 
@@ -545,6 +582,10 @@ class MSCSample():
         # perform neg sampling study
         neg_vec = []
         pos_vec = []
+
+        print("cosim of arcs")
+        print("node degree")
+        print("hyperbolic distance on Poincare ball ")
 
         print("% obtaining arc kernels")
 
@@ -623,9 +664,10 @@ class MSCSample():
             n2_arcs = n2.arcs
             deg = len(n1_arcs)
             num_adj_arc_feats = 2
+
             for adj_arc in n1_arcs:
                 # cosine similarity of adjacent arcs
-                cos_sim = cosine_similarity(arc.line, adj_arc.line)
+                cos_sim = self.cosine_similarity(arc.line, adj_arc.line)
                 arc_feature_row.append(cos_sim)
                 #deg += 1
                 if len(arc_features) == 0:
@@ -633,6 +675,7 @@ class MSCSample():
 
                 # gradiant of distance between node most distant arc points in adjacent arcs
                 # on a Poincare ball, so the gradient of dtances in hyperbolic space
+
                 adj_n1, adj_n2 = adj_arc.nodes
                 adj_node = adj_n2 if adj_n2 != n1 else adj_n1
                 hyperbolic_dist = hyperbolic_distance(adj_node.xy, n1.xy)
@@ -691,13 +734,13 @@ class MSCSample():
 
         arc_features = np.array(arc_features).astype(dtype=np.float32)
 
-        print(" >>>> ")
-        print("mu and std of features")
-        mu = np.mean(arc_features, axis=0)
-        std = np.std(arc_features, axis=0)
+        #print(" >>>> ")
+        #print("mu and std of features")
+        #mu = np.mean(arc_features, axis=0)
+        #std = np.std(arc_features, axis=0)
         #print(mu)
         #print(std)
-        print(" >> ")
+        #print(" >> ")
         #arc_features = (arc_features - mu) / std   #performs much worse
 
         if semi_sup:
@@ -729,6 +772,10 @@ class MSCSample():
             else:
                 return arc_features[selected_arc_indices, :]
 
+        end_time = time.time()
+
+        print('..Time to compute features: ', start_time-end_time)
+
         if return_labels:
             print(">>>> returning with labels")
             return arc_features, feature_names
@@ -737,10 +784,11 @@ class MSCSample():
             self.compiled_features = arc_features
             return arc_features
 
+    @profile
     def update_training_from_inference(self):
         selector = ArcSelector(self.image, self.msc)
 
-        in_arc_ids, in_arcs, out_arc_ids, out_arcs, out_pixels, selected_test_arcs = selector.launch_ui(msc=self.msc
+        in_arc_ids, in_arcs, out_arc_ids, out_arcs, out_pixels, selected_test_arcs, selected_test_arc_ids = selector.launch_ui(msc=self.msc
                                                                                     , use_inference=True)  # xlims=X, ylims=Y)
 
         self.new_selected_positive_arc_ids = set(in_arc_ids)
@@ -748,14 +796,43 @@ class MSCSample():
         self.new_selected_positive_arcs = set(in_arcs)  # _ids
         self.new_selected_negative_arcs = set(out_arcs)  # _ids
         self.new_selected_test_arcs = set(selected_test_arcs)
+        self.new_selected_test_arc_ids = set(selected_test_arc_ids)
+
 
         self.selected_positive_arc_ids = self.new_selected_positive_arc_ids.union(self.selected_positive_arc_ids)
         self.selected_negative_arc_ids = self.new_selected_negative_arc_ids.union(self.selected_negative_arc_ids)
         self.selected_positive_arcs = self.new_selected_positive_arcs.union(self.selected_positive_arcs)
         self.selected_negative_arcs = self.new_selected_negative_arcs.union(self.selected_negative_arcs)
         self.selected_test_arcs = self.new_selected_test_arcs.union(self.selected_test_arcs)
+        self.selected_test_arc_ids = self.new_selected_test_arc_ids.union(self.selected_test_arc_ids)
+        if self.use_ground_truth:
+            selected_arcs = self.selected_positive_arcs.union(self.selected_negative_arcs)
 
+            selected_arc_ids = self.selected_positive_arc_ids.union(self.selected_negative_arc_ids)
+
+            selected_positive_arcs = set()
+            selected_negative_arcs = set()
+            selected_positive_arc_ids = set()
+            selected_negative_arc_ids = set()
+            for arc in selected_arcs:
+                if arc.label_accuracy > 0:
+                    selected_positive_arcs.add(arc)
+                else:
+                    selected_negative_arcs.add(arc)
+            for idx in selected_arc_ids:
+                if self.msc.arc_dict[idx].label_accuracy > 0:
+                    selected_positive_arc_ids.add(idx)
+                else:
+                    selected_negative_arc_ids.add(idx)
+            self.selected_positive_arcs = selected_positive_arcs
+            self.selected_negative_arcs = selected_negative_arcs
+            self.selected_positive_arc_ids = selected_positive_arc_ids
+            self.selected_negative_arc_ids = selected_negative_arc_ids
+
+    @profile
     def select_geomsc_training(self, image=None, X=None, Y=None, fname_selection=None):
+
+        start_time = time.time()
 
         if image is None:
             image = self.image
@@ -767,30 +844,60 @@ class MSCSample():
         if fname_selection is not None:
             in_arcs, out_arcs, out_pixels = selector.write_image(fname_selection)
         else:
-            in_arc_ids, in_arcs, out_arc_ids, out_arcs, out_pixels, selected_test_arcs = selector.launch_ui(msc=self.msc)#xlims=X, ylims=Y)
+            in_arc_ids, in_arcs, out_arc_ids, out_arcs, out_pixels, selected_test_arcs, selected_test_arc_ids = selector.launch_ui(msc=self.msc)#xlims=X, ylims=Y)
 
-        self.selected_positive_arc_ids = in_arc_ids
-        self.selected_negative_arc_ids = out_arc_ids
-        self.selected_positive_arcs = in_arcs#_ids
-        self.selected_negative_arcs = out_arcs#_ids
-        self.selected_test_arcs = selected_test_arcs
+        self.selected_positive_arc_ids = set(in_arc_ids)
+        self.selected_negative_arc_ids = set(out_arc_ids)
+        self.selected_positive_arcs = set(in_arcs)#_ids
+        self.selected_negative_arcs = set(out_arcs)#_ids
+        self.selected_test_arcs = set(selected_test_arcs)
+        self.selected_test_arc_ids = set(selected_test_arcs)
 
         print(" >>>> type from selection : " , type(self.negative_arcs))
 
-        #in_selection, out_selection = self._extract_selection(
-        #    in_arcs, out_arcs, out_pixels
-        #)
-        # self._build_models(in_selection, out_selection)
+        if self.use_ground_truth:
+            selected_arcs = self.selected_positive_arcs.union(self.selected_negative_arcs)
+
+            selected_arc_ids = self.selected_positive_arc_ids.union(self.selected_negative_arc_ids)
+
+            selected_positive_arcs = set()
+            selected_negative_arcs = set()
+            selected_positive_arc_ids = set()
+            selected_negative_arc_ids = set()
+            for arc in selected_arcs:
+                if arc.label_accuracy > 0:
+                    selected_positive_arcs.add(arc)
+                else:
+                    selected_negative_arcs.add(arc)
+            for idx in selected_arc_ids:
+                if self.msc.arc_dict[idx].label_accuracy > 0:
+                    selected_positive_arc_ids.add(idx)
+                else:
+                    selected_negative_arc_ids.add(idx)
+            self.selected_positive_arcs = selected_positive_arcs
+            self.selected_negative_arcs = selected_negative_arcs
+            self.selected_positive_arc_ids = selected_positive_arc_ids
+            self.selected_negative_arc_ids = selected_negative_arc_ids
+
+        end_time = time.time()
+
+        print('..Time to make selection: ', start_time-end_time)
+
         return (in_arcs, out_arcs, out_pixels)
 
+    @profile
     def msc_subgraph_splits(self, validation_samples, validation_hops
                                     , test_samples, test_hops
                                     , X, Y
                                     , accuracy_threshold=0.1, sigmoid=False, multiclass=False
                                     , select_training_from_image=None
                             ,use_infered_graph = False
-                            , update_training_from_inference = None
+                            , update_training_from_inference = None,
+                            map_labels=False
                                     , msc=None,test_graph=False,min_number_features=1,  number_features=5):
+
+        start_time = time.time()
+
         if msc is not None:
             self.assign_msc(msc)
 
@@ -842,7 +949,8 @@ class MSCSample():
         # use cvt sampling to obtain validation/test edges
         self.sample_graph_neighborhoods(X,Y,count=validation_samples
                                             , rings=validation_hops
-                                         , accuracy_threshold=accuracy_threshold, seed=123
+                                         , accuracy_threshold=accuracy_threshold, seed=123,
+                                        map_labels = map_labels
                                          , validation=True)
         if test_samples != 0 and test_hops != 0:
             self.sample_graph_neighborhoods(X, Y, count=test_samples
@@ -872,7 +980,7 @@ class MSCSample():
         node_labels = {}
 
 
-
+        print("..len test: ", len(self.selected_test_arcs))
 
         i_val = 0  ##!!!! need to set size for val set
 
@@ -897,10 +1005,13 @@ class MSCSample():
                 else:
                     # assign label [1,0] if edge corresponds to inaccurate segmentation
                     # assign label [0,1] if msc edge corresponds to accurate segmentation
-                    label = [
-                        int(index in self.negative_arc_ids),
-                        int(index in self.positive_arc_ids),
-                    ]
+                    if self.use_ground_truth:
+                        label = [0 , 1] if arc.label_accuracy == 1 else [1, 0]#[
+                    else:
+                        label = [
+                            int(index in self.selected_negative_arc_ids),
+                            int(index in self.selected_positive_arc_ids)
+                        ]
                     if multiclass:
                         if arc.exterior:
                             label = [
@@ -922,8 +1033,8 @@ class MSCSample():
                 node["features"] = features.tolist()
 
                 # labeled nodes assigned as train, test, or val
-                if bool(np.sum(label)) and select_training_from_image is None and not self.use_inference:
-                    node["label"] = label  # arc.label_accuracy
+                if self.union_graphs or (bool(np.sum(label)) and select_training_from_image is None and not self.use_inference):
+                    node["label"] =  label#[arc.label_accuracy] #node["label"] =
                     node["label_accuracy"] = arc.label_accuracy
                     node["prediction"] = None
                     modified = 0
@@ -969,22 +1080,25 @@ class MSCSample():
                         node["train"] = False
                         node["test"] = False
                         node["val"] = True
-                    elif index not in all_validation and (index in self.selected_negative_arc_ids or index in self.selected_positive_arc_ids
-                                                          and index not in self.selected_test_arcs):
-
-                        label = [
-                            int(index in self.selected_negative_arc_ids),
-                            int(index in self.selected_positive_arc_ids),
-                        ]
-                        node["label"] = label
+                    elif index not in all_validation and (index in self.selected_negative_arc_ids or index in self.selected_positive_arc_ids):
+                                                          #and index not in self.selected_test_arcs):
+                        if not self.use_ground_truth:
+                            label = [
+                                int(index in self.selected_negative_arc_ids),
+                                int(index in self.selected_positive_arc_ids),
+                            ]
+                            node["label"] = label
                         node["test"] = False
                         node["val"] = False
                         node["train"] = True
-                    else:  # and  i_val < val_count:
+                    else:# index in self.selected_test_arc_ids:  # and  i_val < val_count:
                         modified = 1
                         node["train"] = False
                         node["test"] = True
                         node["val"] = False
+
+
+
 
 
 
@@ -1008,6 +1122,11 @@ class MSCSample():
         s1 = json.dumps(data1)  # input graph
         s2 = json.dumps(node_ids)  # dict: nodes to ints
         s3 = json.dumps(node_labels)  # dict: node_id to class
+
+        end_time = time.time()
+
+        print('..Time to select arcs (if not loaded), compute features (if not loaded)'
+              ', and format graph data: ', start_time-end_time)
 
         return (data1, node_ids, node_labels, self.compiled_data)  # (s1, s2, s3, compiled_data)
 

@@ -219,12 +219,14 @@ class mscnn_segmentation:
             fname_raw = raw_path+'PERS'+str(persistence)+".raw"
             image = raw_image.astype("float32")
             image.tofile(fname_raw)
-        # Sanity Check
-        #print("SHAPE ##### : ", image.shape)
-        #print("fname raw ###### : ", fname_raw)
-        #io.imshow(np.transpose(image, (1,2,0)))
-        #from matplotlib import pyplot as plt
-        #plt.show()
+
+        sanity_check = False
+        if sanity_check:
+            print("SHAPE ##### : ", image.shape)
+            print("fname raw ###### : ", fname_raw)
+            io.imshow(np.transpose(image, (1,2,0)))
+            from matplotlib import pyplot as plt
+            plt.show()
         
         if fname_raw is None:
             fname_raw = image_filename

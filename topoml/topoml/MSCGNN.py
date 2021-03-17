@@ -7,6 +7,9 @@ import numpy as np
 # 3rd party imports
 import json
 from networkx.readwrite import json_graph
+
+import time
+
 import networkx as nx
 
 from topoml.graphsage import gnn
@@ -20,12 +23,16 @@ from topoml.eval_scripts import LinearRegression
 # GNN imports (local)
 from topoml.graphsage.utils import format_data
 from topoml.graphsage.utils import load_data
+from sklearn.metrics import f1_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
 
 # Local application imports
 """ ! need to call tracer with param passed giving user option 
        to select"""
 """ give option to compute features from given selection or
     pre defined graph"""
+from memory_profiler import profile
 
 from topoml.ui.ArcSelector import ArcSelector
 #To build MSC and select arcs
@@ -37,8 +44,8 @@ from topoml.graphsage.utils import random_walk_embedding
 
 class MSCGNN:
     def __init__(self, msc=None, geomsc=None, msc_collection=None, G=None, gnn=None, select=False):
-        self.msc = msc if msc is not None else geomsc
-        self.geomsc = geomsc if geomsc is not None else msc
+        self.msc = msc #if msc is not None else geomsc
+        self.geomsc = geomsc #if geomsc is not None else msc
         self.msc_collection = msc_collection if msc_collection is not None else {}
         self.G = G
         self.select = select
@@ -50,6 +57,13 @@ class MSCGNN:
         self.gnn = gnn if gnn is not None else None
         if self.msc is not None:
             self.assign_msc(self.msc)
+        if self.geomsc is not None:
+            self.assign_msc(self.geomsc)
+
+        self.compiled_features = None
+
+        self.preds = None
+        self.labels = None
 
     def assign_msc(self, msc):
         self.msc = msc
@@ -59,6 +73,7 @@ class MSCGNN:
         self.arc_map = msc.arc_map
         self.nodes = msc.nodes
 
+    @profile
     def msc_feature_graph(self,  image=None
                             ,  test_samples=None, test_hops=None
                             , accuracy_threshold=0.2
@@ -67,8 +82,12 @@ class MSCGNN:
                             ,test_graph=False, load_preprocessed=False
                           ,persistence_values=[], blur=0
                           ,validation_samples=0, validation_hops=0
-                          ,multiclass=False
-                          , val_model='cvt', sigmoid=False, min_number_features=1, number_features=5):
+                          ,multiclass=False, manually_select_training=False,
+                          map_labels=False
+                          , val_model='cvt', sigmoid=False, min_number_features=1, number_features=5
+                          , collect_features=False,
+                          union_graphs = False,
+                          use_ground_truth=False):
         if load_msc:
             msc = GeoMSC()
             self.msc = msc.read_from_file(fname_base=load_msc, labeled=True)
@@ -80,21 +99,50 @@ class MSCGNN:
             self.G, self.features, self.node_id, self.walks, self.node_classes\
                 , negative_sample_count\
                 , positive_sample_count = load_data(prefix=prefix)
-            msc = GeoMSC()
         if msc is not None:
             self.msc = self.assign_msc(msc)
         if X is None:
             X = image.shape[1]
             Y = image.shape[2]
 
+        if manually_select_training:
+            selection_image = image
+            msc = MSCSample(msc=self.msc.geomsc, msc_collection=self.msc_collection,
+                            use_ground_truth=use_ground_truth
+                            , image=image, select_label=manually_select_training, union_graphs = union_graphs)
+        else:
+            selection_image = None
+            msc = MSCSample(msc=self.msc, msc_collection=self.msc_collection, image=image,
+                            use_ground_truth=use_ground_truth,
+                            select_label=False, union_graphs = union_graphs)#manually_select_training)
+
         print("%% computing subgraph train, val, test split")
 
-        #problem
-        msc = MSCSample(msc=self.msc, msc_collection=self.msc_collection, image=image)
 
-        if load_preprocessed:
+        if load_preprocessed and collect_features == False:
             msc.features = self.features
+            ####self.loaded_features = self.features
+            msc.compiled_features = self.features
+            if val_model == 'cvt':
+                self.G, \
+                self.node_id, \
+                self.node_classes, \
+                _ = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples,
+                                                        validation_hops=validation_hops
+                                                        , test_samples=test_samples, test_hops=test_hops,
+                                                        accuracy_threshold=accuracy_threshold
+                                                        , multiclass=multiclass,
+                                                        select_training_from_image=selection_image
+                                                        , test_graph=test_graph, sigmoid=sigmoid,
+                                                        min_number_features=min_number_features
+                                                        , number_features=number_features,
+                                                        map_labels=map_labels)
             #msc.sort_labeled_arcs(accuracy_threshold=accuracy_threshold)
+        elif collect_features == True:
+            msc.image = image
+            msc.compile_features(min_number_features=min_number_features
+                                                  , number_features=number_features)
+
         else:
             if val_model=='cvt':
                 self.G,\
@@ -102,7 +150,10 @@ class MSCGNN:
                 self.node_classes,\
                 self.features = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples, validation_hops=validation_hops
                                                     , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold
-                                                    , multiclass=multiclass ,test_graph=test_graph, sigmoid=sigmoid, min_number_features=min_number_features, number_features=number_features)
+                                                    , multiclass=multiclass ,select_training_from_image=selection_image
+                                                    ,test_graph=test_graph, sigmoid=sigmoid, min_number_features=min_number_features
+                                                    , number_features=number_features,
+                                                        map_labels=map_labels)
             elif val_model=='inference':
                 self.G,\
                 self.node_id,\
@@ -123,8 +174,12 @@ class MSCGNN:
 
             self.positive_arcs = msc.positive_arcs
             self.negative_arcs = msc.negative_arcs
+
         self.msc = msc
-        #self.number_features = msc.number_features
+        self.msc_sample = self.msc
+        self.msc_sample.compiled_features = msc.compiled_features
+        self.msc_sample.features = self.features
+        self.compiled_features = msc.compiled_features
 
 
         print("% subgraph split complete ")
@@ -151,6 +206,132 @@ class MSCGNN:
 
             f = time()
             print('graph family written in & w/ prefix ', graph_file_path + '/' + name, '(', f - s, ')')
+
+
+    def select_geomsc_training(self, image=None, X=None, Y=None, fname_selection=None):
+
+        if image is None:
+            image = self.image
+
+        selector = ArcSelector(image, self.msc)
+
+        if fname_selection is not None:
+            in_arcs, out_arcs, out_pixels = selector.write_image(fname_selection)
+        else:
+            in_arcs, out_arcs, out_pixels = selector.launch_ui(X, Y)
+        self.positive_arcs = in_arcs
+        self.negative_arcs = out_arcs
+
+        in_selection, out_selection = self._extract_selection(
+            in_arcs, out_arcs, out_pixels
+        )
+        #self._build_models(in_selection, out_selection)
+        return (in_arcs, out_arcs, out_pixels)
+
+    def update_training_from_inference(self, image=None, X=None, Y=None
+                                       , test_samples=None, test_hops=None
+                                       , accuracy_threshold=0.2
+                                       , msc=None, load_msc=False
+                                       , write_json_graph_path='', name=''
+                                       , test_graph=False, load_preprocessed=False
+                                       , persistence_values=[], blur=0
+                                       , validation_samples=0, validation_hops=0
+                                       , multiclass=False, manually_select_training=False
+                                       , val_model='cvt', sigmoid=False, min_number_features=1, number_features=5
+                                       , collect_features=False):
+        if image is None:
+            image = self.image
+        if X is None:
+            X = image.shape[1]
+            Y = image.shape[2]
+        selection_image=None
+
+        #self.msc_training_sample.use_inference = True
+        #msc = self.msc_training_sample
+        #msc.image = image
+        #msc.compile_features(min_number_features=min_number_features
+        #                     , number_features=number_features)
+        #if manually_select_training:
+        selection_image = image
+        msc = self.msc_sample
+        msc.select_label = True
+        msc.use_inference = True
+        #msc = MSCSample(msc=self.msc.geomsc, msc_collection=self.msc_collection
+        #                    , image=image, select_label=True, use_inference=True)
+
+
+        print("%% computing subgraph train, val, test split")
+
+        #problem
+        #msc = MSCSample(msc=self.msc.geomsc, msc_collection=self.msc_collection, image=image, select_label=manually_select_training)
+
+        ##if load_preprocessed and collect_features == False:
+        ##    msc.features = self.features
+        ##    msc.compiled_features = self.compiled_features
+            #msc.sort_labeled_arcs(accuracy_threshold=accuracy_threshold)
+        """elif collect_features == True:
+            msc.image = image
+            msc.compiled_features = self.compiled_features#(min_number_features=min_number_features
+            #                                      , number_features=number_features)"""
+
+        #msc.image = image
+        #msc.features = self.loaded_features
+        #msc.sort_labeled_arcs(accuracy_threshold=accuracy_threshold)
+
+        if val_model=='cvt':
+            self.G,\
+            self.node_id,\
+            self.node_classes,\
+            self.features = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples, validation_hops=validation_hops
+                                                , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold
+                                                , multiclass=multiclass ,select_training_from_image=selection_image
+                                                ,test_graph=test_graph, sigmoid=sigmoid, min_number_features=min_number_features
+                                                , number_features=number_features)
+        elif val_model=='inference':
+            self.G,\
+            self.node_id,\
+            self.node_classes,\
+            self.features = msc.msc_subgraph_splits(X=X, Y=Y, validation_samples=validation_samples, validation_hops=validation_hops
+                                                , test_samples=test_samples, test_hops=test_hops, accuracy_threshold=accuracy_threshold
+                                                    ,test_graph=test_graph, min_number_features=min_number_features, number_features=number_features)
+        else:
+            self.G, \
+            self.node_id, \
+            self.node_classes, \
+            self.features = msc.msc_persistence_subgraph_split(X=X, Y=Y, persistence_values=persistence_values
+                                                               ,blur=blur
+                                                        , test_samples=test_samples, test_hops=test_hops,
+                                                        accuracy_threshold=accuracy_threshold
+                                                        , test_graph=test_graph
+                                                               ,number_features=number_features)
+
+            self.positive_arcs = msc.positive_arcs
+            self.negative_arcs = msc.negative_arcs
+        self.msc = msc
+
+        if write_json_graph_path:
+
+            print('.writing graph family data')
+            s = time()
+            if not os.path.exists(os.path.join(write_json_graph_path, 'json_graphs')):
+                os.makedirs(os.path.join(write_json_graph_path, 'json_graphs'))
+            graph_file_path = os.path.join(write_json_graph_path, 'json_graphs')
+            # group_name = 'left'
+            for graph_data, f_name in zip([self.G, self.node_id, self.node_classes, self.features],
+                                          [name + '-G', name + '-id_map', name + '-class_map']):
+
+                if not os.path.exists(os.path.join(graph_file_path, f_name + '.json')):
+                    open(os.path.join(graph_file_path, f_name + '.json'), 'w').close()
+                with open(os.path.join(graph_file_path, f_name + '.json'), 'w') as graph_file:
+                    json.dump(graph_data, graph_file)
+
+            if not os.path.exists(os.path.join(graph_file_path, name + '-feats.npy')):
+                open(os.path.join(graph_file_path, name + '-feats.npy'), 'w').close()
+            np.save(os.path.join(graph_file_path, name + '-feats.npy'), self.features)
+
+            f = time()
+            print('graph family written in & w/ prefix ', graph_file_path + '/' + name, '(', f - s, ')')
+
 
 
     def select_msc(self, train_or_test=''
@@ -312,7 +493,8 @@ class MSCGNN:
             
             graph_file_path =  os.path.join(cwd,'data','json_graphs')
             #group_name = 'left'
-            for graph_data, f_name in zip([G,node_id,node_classes,node_features],[group_name+'-G',group_name+'-id_map',group_name+'-class_map']):
+            for graph_data, f_name in zip([G,node_id,node_classes,node_features],[group_name+'-G',group_name+'-id_map',
+                                                                                  group_name+'-class_map']):
                 
                 if not os.path.exists( os.path.join(graph_file_path,f_name+'.json') ):
                     open( os.path.join(graph_file_path,f_name+'.json'), 'w').close()
@@ -337,15 +519,23 @@ class MSCGNN:
         self.unsup = False
         self.gnn = gnn.supervised(aggregator = aggregator, env = env,msc_collection=msc_collection, model_path=model_path)
     """Train the GNN on dual of msc with arc features in nodes"""
-    
+
+    @profile
     def train(self,generate_embedding=False, graph = None, features = None, node_id = None, node_classes = None,
               normalize = True, train_prefix = '',  embedding_name = '', load_walks=False,
               num_neg = None, learning_rate=None, epochs=200, batch_size=512, weight_decay=0.01,
               max_degree=None, degree_l1=None, degree_l2=None, degree_l3=None, total_features = 1,
               polarity=6, depth=2, gpu=0, use_embedding=None, val_model='cvt', sigmoid=False, env=None
-              ,model_size = 'small'
-                            ,out_dim_1 = 256
-                            , out_dim_2 = 256):
+              ,model_size = 'small',
+              out_dim_1 = 256,
+              out_dim_2 = 256,
+              jump_type = 'pool',
+              concat=True,
+              jumping_knowledge=False):
+
+
+        start_time = time.time()
+
         """
         ### trains on --train_prefix (adds -G.json to param passed when searching for file)
         ### uses --model aggregator for training
@@ -415,11 +605,14 @@ class MSCGNN:
                                env=env,
                                val_model=val_model,
                                sigmoid=sigmoid,
-                               use_embedding=use_embedding
-                               , max_degree=max_degree, degree_l1=degree_l1, degree_l2=degree_l2
-                               , degree_l3=degree_l3
-                               ,dim_1=out_dim_1
-                               ,dim_2=out_dim_2)
+                               use_embedding=use_embedding,
+                               max_degree=max_degree,
+                               degree_l1=degree_l1, degree_l2=degree_l2, degree_l3=degree_l3,
+                               dim_1=out_dim_1,
+                               dim_2=out_dim_2,
+                               concat=concat,
+                               jumping_knowledge=jumping_knowledge,
+                               jump_type = jump_type)
 
 
 
@@ -451,6 +644,11 @@ class MSCGNN:
                            val_model=val_model,
                            env=env
                            , max_degree=max_degree, degree_l1=degree_l1, degree_l2=degree_l2,degree_l3=degree_l3)
+
+
+            end_time = time.time()
+
+            print('..Time taken to train and perform inference: ', start_time-end_time)
 
     def predict(self, inf_MSC, generate_embedding=False, graph=None, features=None, node_id=None, node_classes=None,
               normalize=True, train_prefix='', embedding_name='', model_path=None,load_walks=False,
@@ -535,7 +733,8 @@ class MSCGNN:
         #embeds = embeds[[id_map[id] for id in learned_ids]]
 
         use_embedding = (inference_mscgnn.G, inference_mscgnn.features, id_map, None, [], [], [])
-        self.train(generate_embedding=True, use_embedding=use_embedding, embedding_name=inference_embedding_file, load_walks=walk_embedding_file
+        self.train(generate_embedding=True, use_embedding=use_embedding, embedding_name=inference_embedding_file,
+                   load_walks=walk_embedding_file
                      , learning_rate=learning_rate, epochs=epochs
                      , weight_decay=weight_decay, polarity=polarity
                    , depth=depth, env=env, gpu=gpu)
@@ -563,7 +762,13 @@ class MSCGNN:
             
         elif self.G:
              G,feats,id_map, walks\
-                 ,class_map, number_negative_samples, number_positive_samples = format_data(dual=self.G, features=self.features, node_id=self.node_id, id_map=self.node_id, node_classes=self.node_classes, train_or_test = '', scheme_required = True, load_walks=False)
+                 ,class_map, number_negative_samples, number_positive_samples = format_data(dual=self.G,
+                                                                                            features=self.features,
+                                                                                            node_id=self.node_id,
+                                                                                            id_map=self.node_id,
+                                                                                            node_classes=self.node_classes,
+                                                                                            train_or_test = '',
+                                                                                            scheme_required = True, load_walks=False)
              
              mscgnn_infer = LinearRegression(G=G,
                                   MSCGNN_infer=MSCGNN_infer,
@@ -600,5 +805,55 @@ class MSCGNN:
             G_pred = G
         tracer = ArcNeuronTracer("./data/max_diadem.png", blur_sigma=2, persistence=1, valley=False)
         tracer.show_classified_graph(G=G_pred, train_view=train_view)
+
+    def load_ground_truth_label_file(self, file=None):
+        self.msc.read_labels_from_file(file = file)
         
-    
+    # F1 = 2 * (precision * recall) / (precision + recall)
+    def f1_score(self, ground_truth_label_file = None):
+        if self.preds is None or self.labels is None:
+            self.preds = [1 if arc.prediction > 0.5 else 0 for arc in self.msc.arcs]
+            self.labels = [arc.ground_truth for arc in self.msc.arcs]
+            preds = self.preds
+            labels = self.labels
+        else:
+            preds = self.preds
+            labels = self.labels
+        f1 = f1_score(labels, preds, average="weighted")
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        print("F1 Score: ", f1)
+
+    # tp / (tp + fp) where tp is the number of true positives and fp the number of false positives.
+    # The precision is intuitively the ability of the classifier not to label as positive a sample that is negative.
+    def precision_score(self, ground_truth_label_file = None):
+        if self.preds is None or self.labels is None:
+            self.preds = [1 if arc.prediction > 0.5 else 0 for arc in self.msc.arcs]
+            self.labels = [arc.ground_truth for arc in self.msc.arcs]
+            preds = self.preds
+            labels = self.labels
+        else:
+            preds = self.preds
+            labels = self.labels
+        precision = precision_score(labels, preds, average="weighted")
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        print("Precision Score ( tp / (tp +fp) ): ", precision)
+
+    #The recall is the ratio tp / (tp + fn) where tp is the number of true positives and fn the number of false
+    # #negatives. The recall is intuitively the ability of the classifier to find all the positive samples.
+    def recall_score(self, ground_truth_label_file = None):
+        if self.preds is None or self.labels is None:
+            self.preds = [1 if arc.prediction > 0.5 else 0 for arc in self.msc.arcs]
+            self.labels = [arc.ground_truth for arc in self.msc.arcs]
+            preds = self.preds
+            labels = self.labels
+        else:
+            preds = self.preds
+            labels = self.labels
+        recall = recall_score(labels, preds, average="weighted")
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        print("Recall Score ( tp / (tp +fn) ): ", recall)
+
+    def compute_quality_metrics(self, ground_truth_label_file=None):
+        self.precision_score(ground_truth_label_file=ground_truth_label_file)
+        self.recall_score(ground_truth_label_file=ground_truth_label_file)
+        self.f1_score(ground_truth_label_file=ground_truth_label_file)

@@ -16,6 +16,8 @@ import numpy as np
 import sklearn
 from sklearn import metrics
 
+import time
+
 from .models import SampleAndAggregate, SAGEInfo, Node2VecModel
 from .minibatch import EdgeMinibatchIterator
 from .neigh_samplers import UniformNeighborSampler
@@ -85,7 +87,7 @@ class unsupervised:
     def set_parameters(self, G=None, feats=None, id_map=None, walks=None, class_map=None
               , train_prefix='', load_walks=False, number_negative_samples=None
               , number_positive_samples=None, embedding_file_out=''
-              , learning_rate=None, depth=3, epochs=200, batch_size=512
+              , learning_rate=None, depth=2, epochs=200, batch_size=512
               , positive_arcs=[], negative_arcs=[]
               , max_degree=64*3, degree_l1=25, degree_l2=10,degree_l3=0
               , weight_decay=0.001, polarity=6, use_embedding=None
@@ -1124,11 +1126,13 @@ class supervised:
     def set_parameters(self, G=None, feats=None, id_map=None, walks=None, class_map=None
               , train_prefix='', load_walks=False, number_negative_samples=None
               , number_positive_samples=None, embedding_file_out=''
-              , learning_rate=None, depth=3, epochs=200, batch_size=512
+              , learning_rate=None, depth=2, epochs=200, batch_size=512
               , positive_arcs=[], negative_arcs=[]
                        ,dim_1=128, dim_2=128
               , max_degree=64*3, degree_l1=25, degree_l2=10,degree_l3=0
               , weight_decay=0.001, polarity=6, use_embedding=None
+                       , jumping_knowledge=True, concat=True,
+                       jump_type = 'pool'
               , gpu=0, val_model='cvt', model_size="small", sigmoid=False, env='multivax'):
 
         if True:#not self.params_set:
@@ -1181,9 +1185,9 @@ class supervised:
             # dimension 2x used value with concat
             dim = int(474. / 10.)
 
-            concat = False  # mean aggregator only one to perform concat
+            self.concat = concat  # mean aggregator only one to perform concat
             self.dim_feature_space = int((dim + 1) / 2) if concat else dim
-
+            self.jump_type = jump_type
             #end vomit#####################################
 
 
@@ -1224,7 +1228,7 @@ class supervised:
             flags.DEFINE_integer('identity_dim', 0,
                                  'Set to positive value to use identity embedding features of that dimension. Default 0.')
 
-
+            self.flags.DEFINE_boolean('jumping_knowledge', jumping_knowledge, 'whether to use jumping knowledge approach for graph embedding')
             # logging, saving, validation settings etc.
             self.flags.DEFINE_boolean('save_embeddings', True, 'whether to save embeddings for all nodes after training')
             self.flags.DEFINE_string('base_log_dir', './log-dir', 'base directory for logging and saving embeddings')
@@ -1251,7 +1255,10 @@ class supervised:
               , learning_rate=None, depth=3, epochs=200, batch_size=512
               , positive_arcs=[], negative_arcs=[]
               , max_degree=64*3, degree_l1=25, degree_l2=10,degree_l3=0
-              , dim_1 = 256, dim_2 = 256
+              , dim_1 = 256, dim_2 = 256,
+              concat = True,
+              jumping_knowledge = False,
+              jump_type = 'pool'
               , weight_decay=0.001, polarity=6, use_embedding=None
               , gpu=0, val_model='cvt', sigmoid=False,model_size="small", env='multivax'):
 
@@ -1262,6 +1269,8 @@ class supervised:
               , positive_arcs=positive_arcs, negative_arcs=negative_arcs
               , max_degree=max_degree, degree_l1=degree_l1, degree_l2=degree_l2,degree_l3=degree_l3
                             ,dim_1=dim_1,dim_2=dim_2
+                            , jumping_knowledge=jumping_knowledge, concat=concat,
+                            jump_type = jump_type
               , weight_decay=weight_decay, polarity=polarity, use_embedding=use_embedding
               , gpu=gpu, val_model=val_model, model_size=model_size, sigmoid=sigmoid, env=env)
 
@@ -1457,6 +1466,9 @@ class supervised:
 
     def _train(self, train_data, test_data=None):
 
+
+        start_time = time.time()
+
         G = train_data[0]
         features = train_data[1]
         id_map = train_data[2]
@@ -1551,18 +1563,18 @@ class supervised:
 
         elif FLAGS.model == 'graphsage_maxpool':
             sampler = UniformNeighborSampler(adj_info)
-            if FLAGS.samples_3 != 0:
-                layer_infos = [SAGEInfo("node_maxpool", sampler, FLAGS.samples_1, FLAGS.dim_1),
-                               SAGEInfo("node_maxpool", sampler, FLAGS.samples_2, FLAGS.dim_2),
-                               SAGEInfo("node_maxpool", sampler, FLAGS.samples_3, FLAGS.dim_2)]
-            else:
-                layer_infos = [SAGEInfo("node_maxpool", sampler, FLAGS.samples_1, FLAGS.dim_1),
-                               SAGEInfo("node_maxpool", sampler, FLAGS.samples_2, FLAGS.dim_2)]
+            layer_infos = [SAGEInfo("node_maxpool", sampler, FLAGS.samples_1, FLAGS.dim_1),
+                           SAGEInfo("node_maxpool", sampler, FLAGS.samples_2, FLAGS.dim_2)]
+            for i in range(3, self.depth+1):
+                layer_infos.append(SAGEInfo("node_maxpool", sampler, FLAGS.samples_1, FLAGS.dim_1))
 
             model = SupervisedGraphsage(num_classes, placeholders,
                                         features,
                                         adj_info,
                                         minibatch.deg,
+                                        concat=self.concat,
+                                        jumping_knowledge=FLAGS.jumping_knowledge,
+                                        jump_type = self.jump_type,
                                         layer_infos=layer_infos,
                                         aggregator_type="maxpool",
                                         model_size=FLAGS.model_size,
@@ -1686,9 +1698,16 @@ class supervised:
             fp.write("loss={:.5f} f1_micro={:.5f} f1_macro={:.5f} time={:.5f}".
                      format(val_cost, val_f1_mic, val_f1_mac, duration))
 
-        print("Writing test set stats to file (don't peak!)")
+        end_train_time = time.time()
+
+        print('..Time taken to train model: ', end_train_time-start_time)
+
+
         val_cost, val_f1_mic, val_f1_mac, duration = self.incremental_evaluate(sess, model, minibatch, FLAGS.batch_size,
                                                                           test=True)
+        print('..Time taken to perform inference: ', end_train_time-time.time())
+
+        print("Writing test set stats to file (don't peak!)")
         with open(self.log_dir() + "test_stats.txt", "w") as fp:
             fp.write("loss={:.5f} f1_micro={:.5f} f1_macro={:.5f}".
                      format(val_cost, val_f1_mic, val_f1_mac))
@@ -2049,7 +2068,7 @@ class supervised:
                     # unused for classification.
                     if iter % FLAGS.validate_iter == 0:
                         # Validation
-                        sess.run(val_adj_info.op)
+                        #sess.run(val_adj_info.op)
                         ####sess.run(batch_assign.op)
                         ####sess.run(batch_size_assign.op)
                         if FLAGS.validate_batch_size == -1:

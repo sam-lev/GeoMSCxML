@@ -197,14 +197,22 @@ class MSCSegmentation:
                     #compute geometric msc
                     mscnn.image = copy.deepcopy(image)
 
-                    mscnn.image[rgblabeled_mask==0] = 1.0
+                    if mask is not None:
+                        mscnn.image[rgblabeled_mask==0] = 1.0
+
                     image_name_and_path = os.path.join(data_path,im_path)
                     print(">>>>")
                     print(image_name_and_path)
                     print(">>>>")
+                    if len(image.shape) == 2:
+                        X=image.shape[0]
+                        Y=image.shape[1]
+                    else:
+                        X = image.shape[2]
+                        Y = image.shape[1]
                     msc = mscnn.compute_geomsc(image_filename =  image_name_and_path
                                                ,image=mscnn.image
-                                               ,X=image.shape[2], Y=image.shape[1]
+                                               ,X=X, Y=Y
                                                ,geomsc_exec_path=os.path.join(LocalSetup.project_base_path,'..')
                                                , persistence = pers
                                                , blur=True
@@ -238,7 +246,7 @@ class MSCSegmentation:
                         msc_path_and_name = os.path.join(msc_seg_path, str(count-1) + 'Blur'+str(blur_sigma)+'pers' + str(pers) + '-MSC.tif')
                         image_copy = copy.deepcopy(image)
                         msc.draw_segmentation(filename=msc_path_and_name
-                                              , X=image_copy.shape[1], Y=image_copy.shape[2]
+                                              , X=X, Y=Y
                                               , reshape_out=False, dpi=164
                                               , valley=True, ridge=True,original_image=mscnn.image)
                         #mscnn.construct_geomsc_from_image(image_filename = os.path.join(data_path,im_path)

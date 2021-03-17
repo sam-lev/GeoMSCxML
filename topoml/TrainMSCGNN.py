@@ -11,13 +11,13 @@ from topoml.topology.mscnn_segmentation import mscnn_segmentation
 from topoml.topology.MSCSegmentation import MSCSegmentation
 from topoml.topology.geometric_msc import GeoMSC
 from topoml.topology.geometric_msc import GeoMSC_Union
-from topoml.ml.MSCLearningDataSet import MSCRetinaDataset
+from topoml.ml.MSCLearningDataSet import MSCRetinaDataset, Neuron2dDataSet
 from topoml.ui.LocalSetup import LocalSetup
 from topoml.ml.MSCSample import MSCSample
 from topoml.graphsage.utils import random_walk_embedding
 
 # sys.path.append(os.getcwd())
-
+from memory_profiler import profile
 
 
 parser = argparse.ArgumentParser()
@@ -29,12 +29,21 @@ def note(log=""):
     print(log)
 
 class MSCGNNTrainer:
-    def __init__(self, collect_datasets=False, compute_msc=False, test_param=False):
+    def __init__(self, collect_datasets=False, compute_msc=False,
+                 test_param=False, dataset = None, name = None, select_label = True, use_ground_truth=False):
 
         note("Comparison with normalization from jan9 im pred, dif being normalization /  better hyperparam, polarity 24 , -3 pow pers, (4 im, 4 feat, 20 walk 5 len, internal eye predicted farther from optic vessel graph ")
 
+        self.LocalSetup = LocalSetup(env=args.env)
+        self.data_path = os.path.join(self.LocalSetup.project_base_path , 'datasets',dataset, name)#self.LocalSetup.drive_training_path
+        self.segmentation_path = self.LocalSetup.neuron_training_segmentation_path#self.LocalSetup.drive_training_segmentation_path
+        self.msc_write_path = self.LocalSetup.neuron_training_base_path#self.LocalSetup.drive_training_base_path
+        self.map_labels = False
 
-
+        self.active_file = os.path.join(self.LocalSetup.project_base_path, 'continue_active.txt')
+        f = open(self.active_file, 'w')
+        f.write('0')
+        f.close()
         # declarations for running examples
         #for persistence subgraph test, val train, three pers needed and consecutively nested
         #self.persistence_values = sorted([0.001,0.001,0.001])   # , 0.01, 0.1]#[10, 12, 15, 20 , 23, 25, 30] # below 1 for GeoMSC
@@ -42,13 +51,13 @@ class MSCGNNTrainer:
 
         self.number_images = 1#4
         self.min_number_features = 1
-        self.number_features = 3
+        self.number_features = 2
 
         #list of persistences to use for image set in geomsc union space
         #dict is {index : number images, index+1 : number imaages, ... }
-        self.persistence_values = sorted([1.01e-7])#, 1.01e-2])#, 1.01e-2, 1.01e-1])
+        self.persistence_values = sorted([1.01e-4])#, 1.01e-2])#, 1.01e-2, 1.01e-1])
         self.persistence_cardinality = {0: 1}#3, 1:1}#, 1: 2, 2:1}#self.number_images}
-        self.blur_sigmas = [1]  # 1.0, 2.0, 5.0, 10] # add iterative blur &  try multichannel
+        self.blur_sigmas = [0]  # 1.0, 2.0, 5.0, 10] # add iterative blur &  try multichannel
 
         # index for respective images to be first train image and inference image
         self.train_data_idx = '0'
@@ -60,7 +69,8 @@ class MSCGNNTrainer:
         self.pers_inf_idx = 0
         self.blur = 0
 
-        self.select_label = True
+        self.select_label = select_label
+        self.use_ground_truth = use_ground_truth
         #                                 1,
         supervised_learning_rates = [1.0e-1, 1.0e-2, 1.01e-3, 3.0e-4, 1.0e-5]
         unsupervised_learning_rates = [2.0e-1, 2.0e-6, 2.0e-7, 2.0e-8]
@@ -71,35 +81,38 @@ class MSCGNNTrainer:
         polarity_study = [-0.8, 0.25, 0.8, 1, 2, 4 ,7, 10, 18, 23, 25, 32] #10 > 23 #neg samples along walk context pair, 2 bc two min max
         self.polarity = polarity_study[9] #23 opt so far
 
-        self.epochs = 20#60
-        self.depth = 2
+        self.epochs = 35#60
+        self.depth = 4
 
         # to ensure in line graph random walks extend to neighbors, 3 and more walks to improve statistics
         # walks used to define node stochastic node similarity based on observed co-occurance along
         # numerous walks.
-        self.walk_length = 3
-        self.number_walks = 55
+        self.walk_length = 4
+        self.number_walks = 2
         self.validation_samples = 4
         self.validation_hops = 4
         
-        self.batch_size = 64
+        self.batch_size = 32
 
         # each layer is a hop, so l2 is 2-hop, this is the number of samples taken from two hops
         # l1 is then k-hop, sample higher depth 2-hop neighbors first then 1 hop
         # sample farther and generate embedding towards target node / 1-hop
         # l1 = k-hops, lk = 1 hop
-        self.max_node_degree =  37#subsample edges so no node has degree larger than <---
+        self.max_node_degree =  6#subsample edges so no node has degree larger than <---
         self.degree_l1       =  6  # number of neighbors sampled per node (can not be greater than msx_node_degree)
-        self.degree_l2       =  3# edge chromatic number of G is equal to vertex chromatic number L(G)
-        self.degree_l3       =  0
+        self.degree_l2       =  6# edge chromatic number of G is equal to vertex chromatic number L(G)
+        self.degree_l3       =  6
 
         self.aggregator = \
             ['graphsage_maxpool', 'graphsage_seq', 'graphsage_mean', 'gcn'
                 , 'graphsage_meanpool', 'n2v'][0]
 
         self.model_size      =  "small"
-        self.out_dim_1       =  256 #512//2 #int(256 / 2)  #
-        self.out_dim_2       =  256 #512//2 #int(256 / 2)
+        self.out_dim_1       =  256//2 #512//2 #int(256 / 2)  #
+        self.out_dim_2       =  256//2 #512//2 #int(256 / 2)
+
+        self.concat = True
+        self.jumping_knowledge = True
 
         self.all_param = [ self.persistence_values, self.blur_sigmas , self.number_images ,self.number_features, self.train_data_idx , self.inference_data_idx , self.learning_rate ,  self.weight_decay,
         self.polarity ,self.epochs ,  self.depth ,self.walk_length , self.number_walks , self.validation_samples , self.validation_hops , self.batch_size ,self.max_node_degree,self.degree_l1 ,self.degree_l2 , self.degree_l3 ,self.model_size,  self.out_dim_1 , self.out_dim_2  ]
@@ -107,11 +120,11 @@ class MSCGNNTrainer:
         if test_param == True:
             self.number_images = 1
             self.min_number_features = 1
-            self.number_features = 3
+            self.number_features = 2
 
             self.persistence_values = sorted([1.01e-3])#, 1.01e-2])  # , 1.01e-2, 1.01e-1])
             self.persistence_cardinality = {0: 1}#, 1: 2}  # , 1: 2, 2:1}#self.number_images}
-            self.blur_sigmas = [1]
+            self.blur_sigmas = [0]
 
             # index for respective images to be first train image and inference image
             self.train_data_idx = '0'
@@ -133,25 +146,26 @@ class MSCGNNTrainer:
             self.polarity = polarity_study[8]
 
             self.epochs = 12
-            self.depth = 2
+            self.depth = 3
 
-            self.walk_length = 5
-            self.number_walks = 15
+            self.walk_length = 2
+            self.number_walks = 2
+
             self.validation_samples = 4
             self.validation_hops = 2
 
-            self.batch_size = 64
-            self.max_node_degree = 34  # subsample edges so no node has degree larger than <---
-            self.degree_l1 = 32  # number of neighbors sampled per node (can not be greater than msx_node_degree)
+            self.batch_size = 32
+            self.max_node_degree = 6  # subsample edges so no node has degree larger than <---
+            self.degree_l1 = 6  # number of neighbors sampled per node (can not be greater than msx_node_degree)
             self.degree_l2 = 6  # edge chromatic number of G is equal to vertex chromatic number L(G)
-            self.degree_l3 = 0
+            self.degree_l3 = 6
             self.aggregator = \
                 ['graphsage_maxpool', 'graphsage_seq', 'graphsage_mean', 'gcn'
                     , 'graphsage_meanpool', 'n2v'][0]
 
             self.model_size = "small"
-            self.out_dim_1 = 256//2# // 4  # 512//2 #int(256 / 2)  #
-            self.out_dim_2 = 256//2# // 4  # 512//2 #int(256 / 2)
+            self.out_dim_1 = 256//4# // 4  # 512//2 #int(256 / 2)  #
+            self.out_dim_2 = 256//4# // 4  # 512//2 #int(256 / 2)
             self.all_param = [self.persistence_values, self.blur_sigmas, self.number_images, self.number_features,
                               self.train_data_idx, self.inference_data_idx, self.learning_rate, self.weight_decay,
                               self.polarity, self.epochs, self.depth, self.walk_length, self.number_walks,
@@ -159,9 +173,9 @@ class MSCGNNTrainer:
                               self.degree_l1, self.degree_l2, self.degree_l3, self.model_size, self.out_dim_1,
                               self.out_dim_2]
 
-        self.msc_arc_accuracy_threshold = 0.1
+        self.msc_arc_accuracy_threshold = 0.3
 
-        self.LocalSetup = LocalSetup(env=args.env)
+
 
         # Load the Retna data set images and hand segmentations
         # (training,test both Stare and Drive), map masks, and reformat images
@@ -172,42 +186,48 @@ class MSCGNNTrainer:
         self.drive_training_msc, self.drive_test_msc, self.stare_msc = None, None, None
 
 
-    def _collect_datasets(self):
+    def _collect_datasets(self, dataset='neuron', name = 'neuron2', dim_invert = False, format = 'raw'):
         print(" %%% collecting data buffers")
-        self.MSCRetinaDataSet = MSCRetinaDataset(with_hand_seg=True)
-        # get each set independently for msc computation
-        self.drive_training_retina_array = self.MSCRetinaDataSet.get_retina_array(partial=False, msc=False
-                                                                        , drive_training_only=True
-                                                                        , env=args.env)
-                                                                        #, number_images=number_images)
-        ##drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True)
-        ##stare_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, stare_only=True)
+        if set == 'retina':
+            self.MSCRetinaDataSet = MSCRetinaDataset(with_hand_seg=True)
+            # get each set independently for msc computation
+            self.DataSet = self.MSCRetinaDataSet.get_retina_array(partial=False, msc=False
+                                                                  , drive_training_only=True
+                                                                  , env=args.env)
+                                                                            #, number_images=number_images)
+            ##drive_test_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, drive_test_only=True)
+            ##stare_retina_array = MSCRetinaDataSet.get_retina_array(partial=False, msc=False, stare_only=True)
 
-        # dataset buffers to use for training:
-        self.drive_training_dataset = MSCRetinaDataset(self.drive_training_retina_array, split=None
-                                                       , do_transform=False, with_hand_seg=True, shuffle=False)
-        # dataset to use for validation
-        ##drive_test_dataset = MSCRetinaDataset(drive_test_retina_array, split = None, do_transform = False, with_hand_seg=True)
-        # dataset to use for testing
-        ##stare_dataset = MSCRetinaDataset(stare_retina_array, split = None,do_transform = False, with_hand_seg=True)
+            # dataset buffers to use for training:
+            self.data_array = MSCRetinaDataset(self.DataSet, split=None
+                                               , do_transform=False, with_hand_seg=True, shuffle=False)
+            # dataset to use for validation
+            ##drive_test_dataset = MSCRetinaDataset(drive_test_retina_array, split = None, do_transform = False, with_hand_seg=True)
+            # dataset to use for testing
+            ##stare_dataset = MSCRetinaDataset(stare_retina_array, split = None,do_transform = False, with_hand_seg=True)
+        if dataset == 'neuron' or format == 'raw':
+            self.DataSet = Neuron2dDataSet(dataset=name, dim_invert=dim_invert)
+            self.data_array = self.DataSet.get_neuron_data()
+            print(len(self.data_array))
+            #self.data_array = Neuron2dDataSet(self.data_array)
         print("%collection complete")
 
 
     def _compute_msc(self):
         self.MSCSegmentation = MSCSegmentation()
         print(" %%% computing geometric msc")
-        self.drive_training_dataset = self.MSCSegmentation.geomsc_segment_images(persistence_values=self.persistence_values
-                                                                       , blur_sigmas=self.blur_sigmas
-                                                                       , data_buffer=self.drive_training_dataset
-                                                                       , data_path=self.LocalSetup.drive_training_path
-                                                                       ,segmentation_path=self.LocalSetup.drive_training_segmentation_path
-                                                                       , write_path=self.LocalSetup.drive_training_base_path
-                                                                       , label=True#not self.select_label
-                                                                       , save=False
-                                                                       , valley=True, ridge=True
-                                                                       ,env=args.env
-                                                                       ,number_images=self.number_images
-                                                                       , persistence_cardinality = self.persistence_cardinality)
+        self.data_array = self.MSCSegmentation.geomsc_segment_images(persistence_values=self.persistence_values
+                                                                     , blur_sigmas=self.blur_sigmas
+                                                                     , data_buffer=self.data_array
+                                                                     , data_path=self.data_path
+                                                                     , segmentation_path=self.segmentation_path
+                                                                     , write_path=self.msc_write_path
+                                                                     , label=self.map_labels  #not self.select_label
+                                                                     , save=False
+                                                                     , valley=True, ridge=True
+                                                                     , env=args.env
+                                                                     , number_images=self.number_images
+                                                                     , persistence_cardinality = self.persistence_cardinality)
 
         """drive_test_dataset = MSCSegmentation.geomsc_segment_images(persistence_values = persistence_values, blur_sigmas = blur_sigmas
                                               , data_buffer=drive_test_dataset, data_path = LocalSetup.drive_test_path, segmentation_path=LocalSetup.drive_test_segmentation_path
@@ -219,16 +239,16 @@ class MSCGNNTrainer:
 
 
 
-    def collect_training_data(self):
+    def collect_training_data(self, dataset='neuron', name = 'neuron2', format = 'raw', msc_file = None, dim_invert = False):
         ## Get total retina array with newly computed msc
         ## and partition into train, test and val
         if self.collect_datasets:
-            self._collect_datasets()
-        if self.compute_msc:
+            self._collect_datasets(dataset = dataset , name = name, dim_invert = dim_invert, format = format)
+        if self.compute_msc and msc_file is None:
             self._compute_msc()
         print(" %%% performing data buffer train, validation, test split ")
-        self.drive_training_images, self.drive_training_msc_collections, self.drive_training_masks, self.drive_training_segmentations \
-            = list( zip(*self.drive_training_dataset))
+        self.images, self.msc_collections, self.masks, self.msc_segmentations \
+            = list(zip(*self.data_array))
         """drive_test_images, drive_test_msc_collections, drive_test_masks, drive_test_segmentations = list(zip(*drive_test_dataset))
         stare_images, stare_msc_collections, stare_masks, stare_segmentations = list(zip(*stare_dataset))
         retina_dataset = list(zip(drive_training_images + drive_test_images + stare_images
@@ -244,15 +264,18 @@ class MSCGNNTrainer:
         ##                  into validation test and training. Embeddings are iteratively learned across msc.
         ##
         """ temp """
-        self.retina_dataset = self.drive_training_dataset
-        self.MSCRetinaDataSet.retina_array = self.retina_dataset
-        self.MSCRetinaDataSet.get_retina_array(partial=False, msc=self.compute_msc
-                                               , number_images=self.number_images)
-        self.train_dataloader = MSCRetinaDataset(self.retina_dataset, split=None
-                                                 , shuffle=False, do_transform = False, with_hand_seg=True)
-        #val_dataloader = MSCRetinaDataset(retina_dataset, split = "val", do_transform = False, with_hand_seg=True)
-        #test_dataloader = MSCRetinaDataset(retina_dataset, split = "test", do_transform = False, with_hand_seg=True)
-        print(" %%% data buffer split complete")
+        if dataset == 'retina':
+            self.retina_dataset = self.data_array
+            self.MSCRetinaDataSet.retina_array = self.retina_dataset
+            self.MSCRetinaDataSet.get_retina_array(partial=False, msc=self.compute_msc
+                                                   , number_images=self.number_images)
+            self.train_dataloader = MSCRetinaDataset(self.retina_dataset, split=None
+                                                     , shuffle=False, do_transform = False, with_hand_seg=True)
+            #val_dataloader = MSCRetinaDataset(retina_dataset, split = "val", do_transform = False, with_hand_seg=True)
+            #test_dataloader = MSCRetinaDataset(retina_dataset, split = "test", do_transform = False, with_hand_seg=True)
+            print(" %%% data buffer split complete")
+        if dataset == 'neuron' or format == 'raw':
+            self.train_dataloader = Neuron2dDataSet(self.data_array, dataset=name)
 
     def prettyPrint(self, items):
         print(" ")
@@ -264,8 +287,9 @@ class MSCGNNTrainer:
 
     def learn_embedding(self, supervised=True, unsupervised=False, val_model='cvt', model_name=''
                         , load_preprocessed=False,load_preprocessed_walks=False, write_msc=False
-                        , collect_features=False, draw=False
-                        , active_learning = True):
+                        , collect_features=False, draw=False, invert_draw = False, write_prediction = False
+                        , active_learning = True, msc_file=None, dataset='neuron', name = 'neuron2',
+                        label_file = None, format = 'raw', union_space = False):
 
         supervised = not unsupervised
         union_geomsc = self.number_images > 1
@@ -290,8 +314,16 @@ class MSCGNNTrainer:
         validation_hops=self.validation_hops
 
         #if not load_preprocessed:
-        self.collect_training_data()
+        self.collect_training_data(msc_file = msc_file,
+                                   dataset = dataset,
+                                   name = name,
+                                   dim_invert = invert_draw,
+                                   format=format)
         image, msc_collection, mask, segmentation = self.train_dataloader[int(self.train_data_idx)]
+        image = image if len(image.shape) == 2 else np.transpose(np.mean(image, axis=1), (1, 0))
+
+        X = image.shape[0]
+        Y= image.shape[1] if len(image.shape) == 2 else image.shape[2]
         image_copy_1 = copy.deepcopy(image)
         image_copy = copy.deepcopy(image)
 
@@ -303,7 +335,8 @@ class MSCGNNTrainer:
             inference_image, inference_msc_collection, mask, segmentation = self.train_dataloader[
                 int(self.inference_data_idx)]
             inference_image_copy = copy.deepcopy(inference_image)
-            if not load_preprocessed:
+            inference_msc = None
+            if not load_preprocessed and msc_file is None:
                 inference_msc = inference_msc_collection[(sorted(self.persistence_values)[self.pers_inf_idx]
                                                           , self.blur_sigmas[blur])]
                 #inference_mscgnn.assign_msc(msc = inference_msc) #(msc=inference_msc, msc_collection=inference_msc_collection)
@@ -314,14 +347,17 @@ class MSCGNNTrainer:
 
             inference_msc_graph_name = 'inference_msc-feature-graph' + self.inference_data_idx +'-' + str(self.pers_inf_idx) + 'blur-' + str(blur)
 
-        write_path = self.LocalSetup.drive_training_base_path
+        write_path = self.data_path
         msc_seg_path = os.path.join(write_path, 'msc_seg')
         msc_seg_base = msc_seg_path
 
+        session_name = model_name +   'im_' + str(self.number_images) +'blur_' + str(self.blur_sigmas[blur]) + 'persistence_' + str(
+                                    sorted(self.persistence_values)[self.pers_inf_idx])
+        msc_seg_path = os.path.join(msc_seg_path, session_name)
 
-        msc_seg_path = os.path.join(msc_seg_path, model_name +
-                                'im_' + str(self.number_images) +'blur_' + str(self.blur_sigmas[blur]) + 'persistence_' + str(
-                                    sorted(self.persistence_values)[self.pers_inf_idx]))
+        if msc_file is None:
+            msc_file = os.path.join(msc_seg_path, session_name)
+
         if not os.path.exists(msc_seg_path):
             os.makedirs(os.path.join(msc_seg_path))
 
@@ -355,32 +391,64 @@ class MSCGNNTrainer:
         # add number id to name
         if val_model=='cvt':
 
-
-
             msc_graph_name = 'msc-feature-graph' + model_name\
                              + 'im-'+str(self.number_images)+ '_prs-' + str(self.persistence_values[self.pers_inf_idx]) \
                              + '_blur-' + str(self.blur_sigmas[blur])
 
 
             if load_preprocessed:
-                geomsc = GeoMSC_Union() if union_geomsc else GeoMSC()
-                geomsc.read_from_file(msc_seg_path)
+                geomsc = GeoMSC()#_Union() if union_geomsc else GeoMSC()
+                if msc_file is not None:
+                    geomsc.read_from_geo_file(msc_file)
+                else:
+                    geomsc.read_from_file(msc_file)
+                if label_file is not None:
+                    geomsc.read_labels_from_file(file=label_file)
                 msc = geomsc
-                geomsc.geomsc = geomsc
+                if union_space:
+                    geomsc = GeoMSC_Union(msc, msc)
+                else:
+                    geomsc.geomsc = geomsc
+
                 mscgnn = MSCGNN(geomsc=geomsc)
                 im_copy = copy.deepcopy(image)
-                mscgnn.msc_feature_graph(load_preprocessed=True , multiclass=False, manually_select_training=True
-                                         ,image=np.transpose(np.mean(im_copy,axis=1))
-                                         , X=image.shape[0], Y=image.shape[2]
-                                         , collect_features=collect_features, write_json_graph_path='./data'
+
+
+
+                mscgnn.msc_feature_graph(load_preprocessed=True , multiclass=False,
+                                         manually_select_training=self.select_label
+                                         ,image=im_copy
+                                         , X=X, Y=Y,
+                                         use_ground_truth=self.use_ground_truth
+                                         , collect_features=collect_features,
+                                         write_json_graph_path='./data',
+                                         map_labels=self.map_labels,
+                                         union_graphs=union_space
                                          , name=msc_graph_name)
                 computed_features = mscgnn.features
-
-
             else:
+                if msc_file is not None:
+                    geomsc = GeoMSC() #if union_geomsc else GeoMSC()
+                    geomsc.read_from_geo_file(msc_file)
+                    if label_file is not None:
+                        geomsc.read_labels_from_file(file=label_file)
+                    #geomsc.geomsc = geomsc
+                    msc = geomsc
+                    if union_space:
+                        geomsc = GeoMSC_Union(msc, msc)
+                    else:
+                        geomsc.geomsc = geomsc
 
-                msc = msc_collection[(self.persistence_values[self.pers_train_idx], self.blur_sigmas[blur])]
-                geomsc = GeoMSC(geomsc=msc)
+                else:
+                    msc = msc_collection[(self.persistence_values[self.pers_train_idx], self.blur_sigmas[blur])]
+                    geomsc = GeoMSC(geomsc=msc)
+                    msc = geomsc
+
+                if inference_msc is None:
+                    inference_msc = geomsc
+                #
+
+
                 if infer and union_geomsc:
                     if union_geomsc:
                         geomsc = GeoMSC_Union(msc, inference_msc)
@@ -422,13 +490,19 @@ class MSCGNNTrainer:
 
                 mscgnn = MSCGNN(msc=geomsc, msc_collection=msc_collection)
                 im_copy = copy.deepcopy(image)
-                mscgnn.msc_feature_graph(image=np.transpose(np.mean(im_copy, axis=1), (1, 0)),
+
+
+
+                mscgnn.msc_feature_graph(image=im_copy,
                                          multiclass=False,
-                                         manually_select_training=True,
-                                         X=image.shape[0], Y=image.shape[2]
+                                         manually_select_training=self.select_label,#True,
+                                         union_graphs = union_space,
+                                         X=X, Y=Y
                                          , validation_samples=validation_samples,
                                          validation_hops=validation_hops
                                          , test_samples=0, test_hops=0,
+                                         map_labels = self.map_labels,
+                                         use_ground_truth=self.use_ground_truth,
                                          accuracy_threshold=self.msc_arc_accuracy_threshold
                                          , write_json_graph_path='./data', name=msc_graph_name
                                          , test_graph=False, sigmoid=False
@@ -439,7 +513,7 @@ class MSCGNNTrainer:
                 computed_features = mscgnn.features
 
                 if write_msc:
-                    msc.write_msc(msc_seg_path)
+                    msc.write_msc(msc_file)
 
 
 
@@ -470,8 +544,8 @@ class MSCGNNTrainer:
                 msc.read_from_file(msc_seg_path)
                 mscgnn = MSCGNN(msc=msc)
                 mscgnn.msc_feature_graph(load_preprocessed=True
-                                         , image=np.transpose(np.mean(image, axis=1)), X=image.shape[0],
-                                         Y=image.shape[2]
+                                         , image=image, X=X,
+                                         Y=Y
                                          , write_json_graph_path='./data', name=msc_graph_name)
             else:
                 # do inference graph union here
@@ -513,9 +587,10 @@ class MSCGNNTrainer:
 
                 mscgnn = MSCGNN(msc=msc, msc_collection=msc_collection)
                 mscgnn.msc_collection = msc_collection
-                mscgnn.msc_feature_graph(image=np.transpose(np.mean(image,axis=1),(1,0)), X=image.shape[0], Y=image.shape[2]
+                mscgnn.msc_feature_graph(image=image, X=X, Y=Y
                                             ,persistence_values=self.persistence_values,blur=self.blur_sigmas[blur]
-                                         ,val_model='persistence_subset'
+                                         ,val_model='persistence_subset',
+                                         map_labels=self.map_labels
                                             , test_samples=0, test_hops=0, accuracy_threshold=self.msc_arc_accuracy_threshold
                                             ,write_json_graph_path='./data', name=msc_graph_name
                                             ,test_graph=False)
@@ -567,11 +642,14 @@ class MSCGNNTrainer:
                       , learning_rate=learning_rate, epochs=epochs, batch_size=self.batch_size
                       , weight_decay=weight_decay, polarity=polarity
                       , depth=depth, gpu=args.gpu, val_model=val_model, sigmoid=False
-                      , max_degree=self.max_node_degree, degree_l1=self.degree_l1, degree_l2=self.degree_l2 , degree_l3=self.degree_l3
-
-                      , model_size = self.model_size
-                            ,out_dim_1 = self.out_dim_1
-                            , out_dim_2 = self.out_dim_2)
+                      , max_degree=self.max_node_degree,
+                      degree_l1=self.degree_l1, degree_l2=self.degree_l2 , degree_l3=self.degree_l3,
+                      model_size = self.model_size,
+                      out_dim_1 = self.out_dim_1,
+                      out_dim_2 = self.out_dim_2,
+                      jump_type = 'pool',
+                      concat=self.concat,
+                      jumping_knowledge=self.jumping_knowledge)
 
         if unsupervised and infer:
 
@@ -585,7 +663,14 @@ class MSCGNNTrainer:
         #if loading then no MSC to equate, does nothing
         mscgnn.equate_graph(G)
 
-        if active_learning:
+        while active_learning:
+            continue_active = open(self.active_file, "r")
+            c = continue_active.readlines()
+            continue_active.close()
+            for l in c:
+                if not int(l):
+                    active_learning = False
+                    break
             im_copy = copy.deepcopy(image)
 
             # for when adding new msc for inference
@@ -593,10 +678,10 @@ class MSCGNNTrainer:
 
             #mscgnn.compiled_features = computed_features
 
-            mscgnn.update_training_from_inference(image=np.transpose(np.mean(im_copy, axis=1), (1, 0)),
+            mscgnn.update_training_from_inference(image=im_copy,
                                          multiclass=False,
                                          manually_select_training=False,
-                                         X=image.shape[0], Y=image.shape[2]
+                                         X=X, Y=Y
                                          , validation_samples=validation_samples,
                                          validation_hops=validation_hops
                                          , test_samples=0, test_hops=0,
@@ -621,11 +706,13 @@ class MSCGNNTrainer:
                          , weight_decay=weight_decay, polarity=polarity
                          , depth=depth, gpu=args.gpu, val_model=val_model, sigmoid=False
                          , max_degree=self.max_node_degree, degree_l1=self.degree_l1, degree_l2=self.degree_l2,
-                         degree_l3=self.degree_l3
-
-                         , model_size=self.model_size
+                         degree_l3=self.degree_l3,
+                         jump_type = 'pool',
+                         model_size=self.model_size
                          , out_dim_1=self.out_dim_1
-                         , out_dim_2=self.out_dim_2)
+                         , out_dim_2=self.out_dim_2,
+                         concat=self.concat,
+                         jumping_knowledge=self.jumping_knowledge)
             if unsupervised and infer:
                 mscgnn = mscgnn.classify(MSCGNN_infer=mscgnn, MSCGNN=mscgnn,
                                          embedding_path_name=None  # embedding_name
@@ -643,19 +730,28 @@ class MSCGNNTrainer:
             #    G = mscgnn.get_graph()
             msc.equate_graph(G)
             msc_infered = msc
-            if union_geomsc:
+            if union_space:#union_geomsc:
                 geomsc.invert_map()
                 msc_infered = geomsc.test_geomsc
 
 
         msc_path_and_name = os.path.join(msc_seg_path,
-                                         'INFERENCE-Blur' + str(self.blur_sigmas[blur]) + 'pers' + str(
+                                         'blur-' + str(self.blur_sigmas[blur]) + '_pers-' + str(
                                              sorted(self.persistence_values)[self.pers_inf_idx]) + '-MSC.tif')
+
+        mscgnn.msc = msc
+        mscgnn.load_ground_truth_label_file(file = label_file)
+        mscgnn.compute_quality_metrics()
+
+        if write_prediction:
+            msc.write_arc_predictions(msc_file)
+
         if draw:
             #mscgnn
             msc_infered.draw_segmentation(filename=msc_path_and_name
-                                     , X=inference_image_copy.shape[1], Y=inference_image_copy.shape[2]
-                                     , reshape_out=False, dpi=164
+                                     , X=X, Y=Y
+                                     , reshape_out=False, dpi=164,
+                                          invert = invert_draw
                                      , valley=True, ridge=True, original_image=inference_image_copy
                                      , type='predictions')
 
@@ -747,7 +843,26 @@ class MSCGNNTrainer:
 
 
 # Experiment settings
-model_name = 'manual_select_from_1st_inference'
+model_name = 'experiment'#'manual_select_from_1st_inference'
+
+name = 'neuron1'#'retinal'
+
+msc_file = os.path.join('/home/sam/Documents/PhD/Research/GeoMSCxML/datasets',
+                        name,
+                        'manual',
+                        'MAX_neuron_640_640.raw')
+                        #'/retinal/manual', 'im0236_o_700_605.raw')
+
+label_file = 'MAX_neuron_640_640.raw.labels_3.txt'
+
+ground_truth_label_file = os.path.join('/home/sam/Documents/PhD/Research/GeoMSCxML/datasets',
+                                       name,'manual', label_file )
+    #/retinal/manual/im0236_la2_700_605.raw.labels_2.txt'
+
+dataset = 'neuron1_pred'#'retinal_pred'
+
+
+format = 'raw'
 
 other_models = ['manual_select-disjoint_training_wlk-l3-n45_pers1e-8_Feats-polar-nomean',
                 'manual_select_training_pers1e-8_polarFeats',
@@ -764,7 +879,7 @@ load_preprocessed = [False, True][0]
 
 load_preprocessed_walks = load_preprocessed
 
-write_msc = not load_preprocessed
+write_msc = 0#not load_preprocessed
 
 collect_features = not load_preprocessed#[False, True][0]
 
@@ -772,14 +887,37 @@ test_param = [False, True][1]
 
 unsupervised = [False, True][0]
 
+active_learning = 0
+
+select_label = True
+
+invert_draw = True
+
+union_space = not select_label #True
+
+use_ground_truth = True
+
 mscgnn_learner = MSCGNNTrainer(compute_msc=not load_preprocessed
                                , collect_datasets=True
-                               , test_param=test_param)
+                               , test_param=test_param,
+                               dataset=dataset,
+                               name = name,
+                               select_label = select_label,
+                               use_ground_truth=use_ground_truth)
 
 mscgnn_learner.learn_embedding(val_model='cvt'#persistence_subset'
                 , model_name = model_name
                 , load_preprocessed=load_preprocessed
                 , load_preprocessed_walks=load_preprocessed_walks
-                , draw=True, write_msc=write_msc
+                , draw=True,
+                               format = format,
+                               invert_draw=invert_draw,
+                               write_msc=write_msc
                 , collect_features = collect_features
-                , unsupervised=unsupervised            )
+                , unsupervised=unsupervised,
+                               active_learning=active_learning,
+                               msc_file=msc_file,
+                               dataset = dataset,
+                               name=name,
+                               label_file=ground_truth_label_file,
+                               union_space=union_space)

@@ -6,6 +6,7 @@ import numpy as np
 from scipy import ndimage
 from skimage import filters, morphology, restoration, feature, transform
 
+import sklearn.metrics.pairwise as sklearnpairwise
 from geomstats.geometry.poincare_ball import PoincareBall
 
 import os
@@ -186,41 +187,18 @@ def laplacian_filter(image):
 
 def cosine_similarity( a1, a2):
         min_len = min(len(a1), len(a2))
-        uv_x = np.transpose(np.array(a1)[:,0][0:min_len]).dot(np.array(a2)[:,0][0:min_len])
-        uv_y = np.transpose(np.array(a1)[:,1][0:min_len]).dot(np.array(a2)[:,1][0:min_len])
-        uv = uv_x + uv_y
-        mag = np.linalg.norm(np.array(a1)) * np.linalg.norm(np.array(a2))
+        uv_x = np.transpose(np.array(a1)[:0][0:min_len]).dot(np.array(a2)[:0][0:min_len])
+        uv_y = np.transpose(np.array(a1)[:1][0:min_len]).dot(np.array(a2)[:1][0:min_len])
+        uflat = np.array(a1[0:min_len])
+        vflat = np.array(a2[0:min_len])
+        uv = np.dot(np.transpose(np.array(uflat)), np.array(vflat))
+        #uv = uv_x + uv_y# np.sum(np.inner(np.array(a1)[:][0:min_len], np.array(a2)[:][0:min_len])[0])#[0]#
+        mag = np.linalg.norm(uflat) * np.linalg.norm(vflat)
         cos_sim = uv/mag
-        return float(cos_sim)
+        cos_sim = cos_sim[1][1]
+        #cosim = sklearnpairwise.cosine_similarity(a1,a2)#float(cos_sim)
+        return cos_sim#[0]
 
-def map_to_polar(image):
-    """
-    Remap image to polar or log-polar coordinates space.
-    Parameters
-    ----------
-    image : ndarray
-        Input image. Only 2-D arrays are accepted by default. If
-        `multichannel=True`, 3-D arrays are accepted and the last axis is
-        interpreted as multiple channels.
-    center : tuple (row, col), optional
-        Point in image that represents the center of the transformation (i.e.,
-        the origin in cartesian space). Values can be of type `float`.
-        If no value is given, the center is assumed to be the center point
-        of the image.
-    radius : float, optional
-        Radius of the circle that bounds the area to be transformed.
-
-    Returns:
-    warpedndarray
-
-        The polar or log-polar warped image.
-
-    """
-    middle = lambda x: (0.5 * x[0], 0.5 * x[1])
-    return 0#warp_polar(image
-    #                            , center = middle(image.shape)
-    #                            , radius = np.max(image.shape)/2.0
-    #                            , output_shape = image.shape)
 
 def hyperbolic_distance(point_a, point_b):
     """Gradient of squared hyperbolic distance.
@@ -241,12 +219,12 @@ def hyperbolic_distance(point_a, point_b):
         Geodesic squared distance between the two points.
     """
     #min_len = min(len(point_a), len(point_b))
+
     hyperbolic_metric = PoincareBall(2).metric
     log_map = hyperbolic_metric.log(np.array(point_b), np.array(point_a))
     grad_hyperbolic = -2 * log_map
-    hyperbolic_dist = hyperbolic_metric.dist(np.array(point_b), np.array(point_a))
-
-    return hyperbolic_dist
+    #hyperbolic_dist = hyperbolic_metric.dist(np.array(point_b), np.array(point_a))
+    return grad_hyperbolic[1]#0# hyperbolic_dist
 
 def neighbor_filter(image, min_shift=1, max_shift=3):
     """Create a list of filters by shifting the image a single pixel at

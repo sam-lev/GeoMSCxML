@@ -9,7 +9,8 @@ from .layers import *
 from .metrics import *
 
 from .prediction import BipartiteEdgePredLayer
-from .aggregators import MeanAggregator, MaxPoolingAggregator, MeanPoolingAggregator, SeqAggregator, GCNAggregator
+from .aggregators import MeanAggregator, MaxPoolingAggregator, \
+    MeanPoolingAggregator, SeqAggregator, GCNAggregator, TwoMaxLayerPoolingAggregator
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
@@ -21,7 +22,7 @@ FLAGS = flags.FLAGS
 
 class Model(object):
     def __init__(self, **kwargs):
-        allowed_kwargs = {'name', 'logging', 'model_size'}
+        allowed_kwargs = {'name', 'logging', 'model_size', 'jumping_knowledge', 'concat'}
         for kwarg in kwargs.keys():
             assert kwarg in allowed_kwargs, 'Invalid keyword argument: ' + kwarg
         name = kwargs.get('name')
@@ -217,7 +218,8 @@ class SampleAndAggregate(GeneralizedModel):
     """
 
     def __init__(self, placeholders, features, adj, degrees,
-                 layer_infos, depth = 1, concat=True, aggregator_type="mean", 
+                 layer_infos, depth = 1, concat=True, jumping_knowledge=False,
+                 aggregator_type="mean",
             model_size="small", identity_dim=0,
             **kwargs):
         '''
@@ -240,7 +242,8 @@ class SampleAndAggregate(GeneralizedModel):
         elif aggregator_type == "seq":
             self.aggregator_cls = SeqAggregator
         elif aggregator_type == "maxpool":
-            self.aggregator_cls = MaxPoolingAggregator
+            self.aggregator_cls = TwoMaxLayerPoolingAggregator#MaxPoolingAggregator
+            self.aggregator_cls.jumping_knowledge = False# jumping_knowledge
         elif aggregator_type == "meanpool":
             self.aggregator_cls = MeanPoolingAggregator
         elif aggregator_type == "gcn":
@@ -267,7 +270,8 @@ class SampleAndAggregate(GeneralizedModel):
                 self.features = tf.concat([self.embeds, self.features], axis=1)
         self.degrees = degrees
         self.concat = concat
-
+        self.jumping_knowledge = jumping_knowledge
+        self.jump_type = 'pool'
         self.depth = depth
         
         self.dims = [(0 if features is None else features.shape[1]) + identity_dim]
@@ -357,6 +361,24 @@ class SampleAndAggregate(GeneralizedModel):
                                 tf.reshape(hidden[hop + 1], neigh_dims)))
                 next_hidden.append(h)
             hidden = next_hidden
+
+        if self.jumping_knowledge:
+            h_jump = hidden[-1]
+            for idx, l_vec in enumerate(hidden[::-1]):
+                if idx + 1 != len(hidden):
+                    #h_jump = tf.concat([h_jump, hidden[idx + 1]], axis=1)
+                    if self.jump_type == 'pool':
+                        h_next = tf.reduce_max(hidden[idx + 1], axis=1)
+                    else:
+                        h_next = hidden[idx + 1]
+                    from_h_next = tf.matmul(h_next, self.vars['neigh_weights'])
+                    from_h = tf.matmul(h_jump, self.vars["self_weights"])
+
+                    if self.jump_type != 'cat':
+                        h_jump = tf.add_n([from_h, from_h_next])
+                    else:
+                        h_jump = tf.concat([from_h, from_h_next], axis=1)
+            hidden = [h_jump]
         return hidden[0], aggregators
 
     def _build(self):
